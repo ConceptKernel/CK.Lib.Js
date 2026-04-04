@@ -1,0 +1,60 @@
+{
+  "name": "@conceptkernel/cklib",
+  "version": "1.0.0",
+  "description": "CKP v3.5 JavaScript runtime — NATS WSS client, kernel web components, event bus",
+  "type": "module",
+  "main": "ck-client.js",
+  "exports": {
+    ".": "./ck-client.js",
+    "./client": "./ck-client.js",
+    "./page": "./ck-page.js",
+    "./bus": "./ck-bus.js",
+    "./kernel": "./ck-kernel.js",
+    "./registry": "./ck-registry.js",
+    "./runtime": "./ck-runtime.js",
+    "./materializer": "./ck-materializer.js",
+    "./store": "./ck-store.js",
+    "./shapes": "./ck-shapes.js",
+    "./anim": "./ck-anim.js",
+    "./sound": "./ck-sound.js"
+  },
+  "files": [
+    "ck-*.js",
+    "index.html",
+    "vendor/",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "echo \"Tests: see TODO.md for test plan\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ConceptKernel/CK.Lib.Js.git"
+  },
+  "keywords": [
+    "conceptkernel",
+    "ckp",
+    "nats",
+    "websocket",
+    "kernel",
+    "ontology",
+    "bfo",
+    "prov-o",
+    "event-driven",
+    "web-components"
+  ],
+  "author": "Peter Styk <peter@styk.tv>",
+  "license": "MIT",
+  "homepage": "https://conceptkernel.org",
+  "bugs": {
+    "url": "https://github.com/ConceptKernel/CK.Lib.Js/issues"
+  },
+  "dependencies": {
+    "nats.ws": "^1.30.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
