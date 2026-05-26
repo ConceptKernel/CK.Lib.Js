@@ -146,12 +146,82 @@ All governance (affordance, validation, seal) is in pgCK.
 
 ---
 
-## Deferred (v1.2.0+)
+## Version Roadmap
 
-- Binary compact delta profile (for observer streams only)
-- Dictionary-based payload compression
-- JetStream subscription (NATS persistence)
-- Custom SHACL validator in browser
+### v1.1.0 (Current Release) — Transport Client
+
+**Focus:** Establish reliable NATS WSS connection to pgCK via Sporaxis bundle
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Core JSON protocol | ✓ shipped | Baseline interop; all governance in pgCK |
+| NATS WSS client | ✓ shipped | nats.ws; request/reply + streaming |
+| Subject family dispatch | ✓ shipped | input/result/event/stream |
+| Error handling | ✓ shipped | Timeouts, connection drops, malformed JSON |
+| Type hints (JSDoc) | ✓ shipped | Basic TS compatibility |
+| npm publishing | ✓ shipped | GitHub Actions → npmjs |
+
+**Browser support:** ES2020+  
+**Node.js support:** 18+
+
+---
+
+### v1.2.0 (Next Release) — Observer Optimization
+
+**Focus:** High-frequency observer feeds (stream.kernel.*) with efficient delta encoding
+
+| Feature | Status | Target |
+|---------|--------|--------|
+| Binary compact delta profile | ⧗ planned | FlatBuffers / MessagePack for stream.* only |
+| Dictionary sync protocol | ⧗ planned | Term handle bootstrap + versioning |
+| Observer subscription helpers | ⧗ planned | High-level APIs for spatial/temporal streams |
+| Micro bundle integration tests | ⧗ planned | Verify against Sporaxis bundle v0.1.2+ |
+| Performance benchmarks | ⧗ planned | Establish latency/throughput baselines |
+
+**Browser support:** ES2020+  
+**Dependencies:** nats.ws, flatbuffers (optional)  
+**Break:** None (backward compatible with v1.1.0 Core JSON)
+
+---
+
+### v2.0.0 (Major Release) — Strong Typing & Full Feature Set
+
+**Focus:** TypeScript-first development + complete CKP v3.8 affordance model
+
+| Feature | Status | Scope |
+|---------|--------|-------|
+| **TypeScript rewrite** | ◯ planned | Full TS source; drop JSDoc hints; ESM/CommonJS dual build |
+| **Strong affordance types** | ◯ planned | Ontology-driven type generation (URN → TS interface) |
+| **Schema validation** | ◯ planned | Inbound/outbound JSON schema per affordance; fail-fast |
+| **Binary strong types** | ◯ planned | FlatBuffers schema → TS types; zero-copy reads |
+| **Lexical rehydration** | ◯ planned | Dictionary-coded compact terms → full RDF URIs |
+| **JetStream support** | ◯ planned | Durable subscriptions; message persistence |
+| **Browser SHACL validator** | ◯ planned | WASM-based shape validation (reject invalid payloads locally) |
+| **Session management** | ◯ planned | Automatic session lifecycle; participant tracking |
+| **Proof verification** | ◯ planned | Verify PROV-O proof chains client-side |
+| **Plugin architecture** | ◯ planned | Custom affordance handlers; event middleware |
+
+**Browser support:** Modern browsers (ES2022+)  
+**Node.js support:** 20+  
+**Dependencies:** flatbuffers, zod (or equiv), @wasm (optional)  
+**Break:** TypeScript 5.0+; Node.js 20 minimum; package exports restructured
+
+---
+
+## Feature Progression
+
+```
+v1.1.0                          v1.2.0                    v2.0.0
+──────────────────────────────────────────────────────────────────
+┌─────────────────────┐        ┌──────────────────┐      ┌──────────────────────┐
+│ Core JSON Protocol  │        │ Binary Deltas    │      │ Strong Type System   │
+│ NATS WSS Transport  │──────▶ │ Observer Streams │─────▶│ Full TS + SHACL      │
+│ Request/Reply       │        │ Dictionary Sync  │      │ Proof Verification   │
+│ Basic Subject Fams  │        │ Perf Optim       │      │ JetStream Durable    │
+└─────────────────────┘        └──────────────────┘      └──────────────────────┘
+      ↑                               ↑                          ↑
+    Today                        2026 Q3                     2026 Q4
+```
 
 ---
 
