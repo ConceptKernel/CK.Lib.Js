@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - "bundle-ck-lib-js-v*"
+    branches: []
   workflow_dispatch:
 
 jobs:
