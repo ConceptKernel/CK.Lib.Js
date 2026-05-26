@@ -1,7 +1,7 @@
 {
   "name": "@conceptkernel/cklib",
   "version": "1.0.0",
-  "description": "CKP v3.5 JavaScript runtime — NATS WSS client, kernel web components, event bus",
+  "description": "CKP v3.8 JavaScript client library — NATS WSS browser agent, Envoy Gateway ready",
   "type": "module",
   "main": "ck-client.js",
   "exports": {

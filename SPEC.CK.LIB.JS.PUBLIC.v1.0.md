@@ -26,11 +26,20 @@ CK.Lib.Js was originally released as v1.0.0 on the public GitHub repo (`git@gith
 
 Reconcile the fork with the public repo and reopen CK.Lib.Js as an actively maintained public artifact, ensuring:
 
-- Forward-compatible JavaScript client library for CKP v3.7.6+
+- **CKP v3.8-final-ready** JavaScript client library (production alignment)
 - Clean CI/CD publishing to npmjs (via existing workflow)
-- Proper CKP dispatch integration (processor.py)
+- Runtime requirements explicit: Envoy Gateway + NATS WSS (micro bundle pattern)
 - Documented change history and PR trail
 - No disruption to existing consumers
+
+### 1.3 CKP v3.8 Alignment
+
+CK.Lib.Js v1.1.0 is released concurrently with **CKP v3.8 final production**. This version declares:
+
+- **Minimum CKP version:** v3.8-final (not v3.7.6, not v3.5)
+- **Runtime dependencies:** Envoy Gateway (HTTP routing) + NATS WSS (message bus)
+- **Client profile:** Browser-based kernel agent (kernel dispatch + event subscription)
+- **Deployment model:** Single-page application on Envoy-managed virtual host
 
 ---
 
@@ -211,9 +220,134 @@ ck verify CK.Lib.Js                  # CKP compliance check
 
 ---
 
-## 5. Public Reopening Plan
+## 5. Runtime Requirements (CKP v3.8 Production)
 
-### 5.1 GitHub Actions CI/CD
+### 5.0 NATS WSS Transport & pgCK Governance
+
+CK.Lib.Js v1.1.0 requires:
+
+**Transport Layer:**
+- Native NATS server v2.14+ with WebSocket Secure (WSS) listener
+- No embedded NATS in the kernel itself; NATS is a separate transport service
+- TLS-encrypted WSS endpoint (required, not optional)
+
+**Governance Layer:**
+- pgCK router/executor subscribes to fixed subject families
+- SQL-first validation: affordance resolution, SHACL validation, governed accept/reject
+- Core JSON profile for inbound/outbound (binary optimization deferred to v1.2+)
+
+**Subject Families (v3.8 normative):**
+- `input.*` — inbound kernel actions (browser → pgCK)
+- `result.*` — action outcomes (pgCK → browser)
+- `event.*` — state change notifications (pgCK → browser)
+- `stream.*` — optional high-frequency observer feeds
+- `session.*` — optional session state (future)
+
+#### 5.0.1 NATS WSS Configuration
+
+**Requirement:** Native NATS server with WSS listener enabled
+
+```yaml
+# Local dev setup (compose.nats-wss.yml pattern)
+nats-server:
+  image: nats:2.14.1-scratch
+  ports:
+    - "4222:4222"    # TCP (internal/worker use)
+    - "8443:8443"    # WSS (browser clients)
+    - "8222:8222"    # HTTP monitoring
+  environment:
+    - TLS_CERT=/etc/nats/tls/server.pem
+    - TLS_KEY=/etc/nats/tls/server-key.pem
+```
+
+**Browser client usage:**
+
+```javascript
+import { connect } from "nats.ws";
+
+// Connect to NATS WSS endpoint
+const nc = await connect({
+  servers: ["wss://stream.example.com:8443"],
+  // or for local dev: ["wss://localhost:8443"]
+});
+
+// Subscribe to result/event feeds
+const sub = nc.subscribe("result.kernel.*");
+for await (const msg of sub) {
+  const result = msg.json();
+  console.log("Action result:", result);
+}
+```
+
+**TLS Requirements:**
+- Self-signed dev certs OK for local/test (gitignored, not committed)
+- CA-signed certs for production
+- Browser must trust the WSS endpoint (add CA to client trust store if self-signed)
+
+#### 5.0.2 pgCK Router/Executor Boundary
+
+CK.Lib.Js is a **transport client only**. Kernel logic lives in pgCK:
+
+```
+browser (CK.Lib.Js)
+  → NATS.publish("input.kernel.XrVoyage.action.launch", {...})
+  → NATS WSS transport
+  → nats-server (transport edge)
+  → pgCK router/executor (business logic)
+     - affordance resolution
+     - identity verification
+     - SHACL validation
+     - governed state mutation
+  → ckp.seal() or ckp.reject()
+  → NATS.publish("result.kernel.XrVoyage.action.launch", {...})
+  → browser receives result
+```
+
+**No direct kernel logic in CK.Lib.Js**; all governance is in pgCK.
+
+#### 5.0.3 Subject Discipline
+
+Inbound (browser → kernel):
+
+```javascript
+await nc.request(
+  "input.kernel.MyKernel.action.do_thing",
+  JSON.stringify({
+    trace_id: "uuid",
+    participant: "browser_session_id",
+    affordance: "urn:ckp:affordance:MyKernel:do_thing",
+    payload: { /* ... */ },
+  }),
+  { timeout: 5000 }
+);
+```
+
+Outbound (kernel → browser):
+
+```javascript
+// Subscribe to result
+nc.subscribe("result.kernel.MyKernel.action.*", (msg) => {
+  const { trace_id, outcome, proof } = msg.json();
+  // outcome: success | rejected | error
+  // proof: optional durable proof reference
+});
+
+// Subscribe to events
+nc.subscribe("event.kernel.MyKernel.*", (msg) => {
+  const { entity, predicate, object } = msg.json();
+  // state change notification
+});
+```
+
+#### 5.0.4 OCI Bundling (v1.2.0+)
+
+For containerized local dev, see `compose/compose.nats-wss.yml` pattern in pgCK repo.
+
+Future v1.2.0 OCI bundle will follow Sporaxis-Com micro profile.
+
+---
+
+## 5.1 GitHub Actions CI/CD
 
 Current workflow (`github/workflows/npm-publish.yml` or similar):
 
