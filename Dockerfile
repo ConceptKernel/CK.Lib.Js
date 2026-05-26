@@ -13,7 +13,7 @@ COPY vendor/ vendor/
 COPY README.md LICENSE ./
 
 # Install dependencies
-RUN npm ci --only=production
+RUN npm ci --omit=dev
 
 # Final stage
 FROM node:20-alpine
