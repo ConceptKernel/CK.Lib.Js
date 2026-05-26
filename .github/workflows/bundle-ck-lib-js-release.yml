@@ -1,4 +1,4 @@
-name: Publish CK.Lib.Js Bundle
+name: Publish CK.Lib.Js Bundle (v1.2.0+)
 
 on:
   push:
