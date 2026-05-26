@@ -166,21 +166,39 @@ All governance (affordance, validation, seal) is in pgCK.
 
 ---
 
-### v1.2.0 (Next Release) — Observer Optimization
+### v1.2.0 (Next Release) — OCI Bundle & GHCR Publishing
 
-**Focus:** High-frequency observer feeds (stream.kernel.*) with efficient delta encoding
+**Focus:** Container-native deployment; integrate with Sporaxis build system
+
+| Feature | Status | Target |
+|---------|--------|--------|
+| **OCI bundle (bundle-ck-lib-js.yaml)** | ⧗ planned | Sporaxis-compatible bundle spec |
+| **Dockerfile generation** | ⧗ planned | Multi-platform (amd64, arm64) Node.js 20 runtime |
+| **Dev HTTP server** | ⧗ planned | Serve CK.Lib.Js for browser testing |
+| **GHCR publishing** | ⧗ planned | GitHub Actions → ghcr.io/conceptkernel/bundle-ck-lib-js |
+| **Smoke test** | ⧗ planned | Verify npm install, HTTP server startup, NATS WSS connectivity |
+| **Sporaxis integration** | ⧗ planned | Add bundle-ck-lib-js to Sporaxis oci-germination build matrix |
+
+**OCI image target:** <150 MiB (Node.js alpine base)  
+**Deployment:** Single-command container spawn with dev version attachable  
+**Break:** None (backward compatible with v1.1.0)
+
+---
+
+### v1.3.0 (Observer Optimization) — High-Frequency Streams
+
+**Focus:** Performance-optimized observer feeds (stream.kernel.*)
 
 | Feature | Status | Target |
 |---------|--------|--------|
 | Binary compact delta profile | ⧗ planned | FlatBuffers / MessagePack for stream.* only |
 | Dictionary sync protocol | ⧗ planned | Term handle bootstrap + versioning |
 | Observer subscription helpers | ⧗ planned | High-level APIs for spatial/temporal streams |
-| Micro bundle integration tests | ⧗ planned | Verify against Sporaxis bundle v0.1.2+ |
 | Performance benchmarks | ⧗ planned | Establish latency/throughput baselines |
 
 **Browser support:** ES2020+  
 **Dependencies:** nats.ws, flatbuffers (optional)  
-**Break:** None (backward compatible with v1.1.0 Core JSON)
+**Break:** None (backward compatible)
 
 ---
 
@@ -211,16 +229,16 @@ All governance (affordance, validation, seal) is in pgCK.
 ## Feature Progression
 
 ```
-v1.1.0                          v1.2.0                    v2.0.0
-──────────────────────────────────────────────────────────────────
-┌─────────────────────┐        ┌──────────────────┐      ┌──────────────────────┐
-│ Core JSON Protocol  │        │ Binary Deltas    │      │ Strong Type System   │
-│ NATS WSS Transport  │──────▶ │ Observer Streams │─────▶│ Full TS + SHACL      │
-│ Request/Reply       │        │ Dictionary Sync  │      │ Proof Verification   │
-│ Basic Subject Fams  │        │ Perf Optim       │      │ JetStream Durable    │
-└─────────────────────┘        └──────────────────┘      └──────────────────────┘
-      ↑                               ↑                          ↑
-    Today                        2026 Q3                     2026 Q4
+v1.1.0              v1.2.0            v1.3.0              v2.0.0
+─────────────────────────────────────────────────────────────────────
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────────┐
+│ Core JSON    │   │ OCI Bundle   │   │ Observer     │   │ Strong Type      │
+│ NATS WSS     │──▶│ GHCR Publish │──▶│ Optimization │──▶│ TypeScript + TS  │
+│ Transport    │   │ Dev Server   │   │ Binary Delta │   │ SHACL Validator  │
+│ npm pkg      │   │ Sporaxis Int │   │ Perf Tune    │   │ Plugin System    │
+└──────────────┘   └──────────────┘   └──────────────┘   └──────────────────┘
+       ↑                   ↑                  ↑                   ↑
+     Today          2026 Q2-Q3         2026 Q3-Q4            2026 Q4-2027
 ```
 
 ---
