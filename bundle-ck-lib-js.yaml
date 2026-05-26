@@ -2,7 +2,7 @@ name: bundle-ck-lib-js
 description: CK.Lib.Js v1.1.0 browser client library + dev HTTP server for NATS WSS bridge testing
 
 image:
-  registry: ghcr.io/conceptkernel/bundle-ck-lib-js
+  registry: ghcr.io/conceptkernel/ck-lib-js
   node_major: 20
   base_image: node:20-bookworm
   final_image: node:20-alpine
