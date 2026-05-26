@@ -3,7 +3,7 @@ name: Publish CK.Lib.Js Bundle
 on:
   push:
     tags:
-      - 'bundle-ck-lib-js-v*'
+      - "bundle-ck-lib-js-v*"
   workflow_dispatch:
 
 jobs:
