@@ -11,8 +11,8 @@ COPY ck-*.js index.html ./
 COPY vendor/ vendor/
 COPY README.md LICENSE ./
 
-# Install dependencies
-RUN npm ci --omit=dev
+# Install dependencies (production only)
+RUN npm install --production && npm cache clean --force
 
 # Target 1: Static artifact (default) — mount as folder layer
 FROM scratch AS static
