@@ -36,50 +36,27 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          target: static
           push: true
           tags: |
             ghcr.io/conceptkernel/ck-lib-js:${{ steps.version.outputs.version }}
             ghcr.io/conceptkernel/ck-lib-js:latest
           labels: |
-            org.opencontainers.image.title=CK.Lib.Js (Static)
+            org.opencontainers.image.title=CK.Lib.Js
             org.opencontainers.image.description=CKP v3.8 JavaScript client library — static folder mount
             org.opencontainers.image.version=${{ steps.version.outputs.version }}
             org.opencontainers.image.source=https://github.com/ConceptKernel/CK.Lib.Js
             org.opencontainers.image.designation=ckp:static
 
-      - name: Build and push dev image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          target: dev
-          push: true
-          tags: |
-            ghcr.io/conceptkernel/ck-lib-js:${{ steps.version.outputs.version }}-dev
-          labels: |
-            org.opencontainers.image.title=CK.Lib.Js (Dev Server)
-            org.opencontainers.image.description=CKP v3.8 JavaScript client library + HTTP server
-            org.opencontainers.image.version=${{ steps.version.outputs.version }}
-            org.opencontainers.image.source=https://github.com/ConceptKernel/CK.Lib.Js
-            org.opencontainers.image.designation=ckp:web-serving
-
       - name: Create release
         run: |
           gh release create bundle-ck-lib-js-v${{ steps.version.outputs.version }} \
             --title "CK.Lib.Js v${{ steps.version.outputs.version }}" \
-            --notes "## Images
+            --notes "## Static Artifact (ckp:static)
 
-**Static Artifact** (ckp:static)
 \`\`\`bash
 docker pull ghcr.io/conceptkernel/ck-lib-js:${{ steps.version.outputs.version }}
 \`\`\`
 
-**Dev Server** (ckp:web-serving)
-\`\`\`bash
-docker pull ghcr.io/conceptkernel/ck-lib-js:${{ steps.version.outputs.version }}-dev
-\`\`\`
-
-Both images: Multi-platform (linux/amd64, linux/arm64), anonymous public access via GHCR."
+Multi-platform (linux/amd64, linux/arm64), anonymous public access via GHCR."
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
