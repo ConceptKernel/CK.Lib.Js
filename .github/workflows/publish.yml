@@ -52,20 +52,39 @@ jobs:
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "image=ghcr.io/conceptkernel/bundle-ck-lib-js" >> $GITHUB_OUTPUT
 
-      - name: Build and push
+      - name: Build and push (static artifact)
         uses: docker/build-push-action@v5
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
+          target: static
           tags: |
             ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}
             ${{ steps.meta.outputs.image }}:latest
           labels: |
-            org.opencontainers.image.title=CK.Lib.Js
-            org.opencontainers.image.description=CKP v3.8 JavaScript client library + dev server
+            org.opencontainers.image.title=CK.Lib.Js (Static)
+            org.opencontainers.image.description=CKP v3.8 JavaScript client library — static folder mount
             org.opencontainers.image.version=${{ steps.meta.outputs.version }}
             org.opencontainers.image.source=https://github.com/ConceptKernel/CK.Lib.Js
+            org.opencontainers.image.designation=ckp:static
+
+      - name: Build and push (dev server)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          target: dev
+          tags: |
+            ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.version }}-dev
+            ${{ steps.meta.outputs.image }}:dev
+          labels: |
+            org.opencontainers.image.title=CK.Lib.Js (Dev Server)
+            org.opencontainers.image.description=CKP v3.8 JavaScript client library + HTTP server
+            org.opencontainers.image.version=${{ steps.meta.outputs.version }}
+            org.opencontainers.image.source=https://github.com/ConceptKernel/CK.Lib.Js
+            org.opencontainers.image.designation=ckp:web-serving
 
   release:
     name: Create GitHub Release
