@@ -1,0 +1,7 @@
+# Reference files (local working copies, not committed)
+ref-*
+
+# Python build artifacts
+__pycache__/
+*.pyc
+*.pyo
