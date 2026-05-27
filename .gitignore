@@ -1,6 +1,10 @@
 # Reference files (local working copies, not committed)
 ref-*
 
+# Working-in-progress folder (internal coordination, drafts, NOTIFIES to
+# other repos, alignment docs). Public repo: keep working state out of history.
+_WIP/
+
 # Python build artifacts
 __pycache__/
 *.pyc
