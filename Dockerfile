@@ -1,27 +1,19 @@
-# CK.Lib.Js v1.2.0 OCI Bundle — Static Artifact Only
+# CK.Lib.Js v1.2.1 OCI Bundle — Static Artifact (root layout, no node_modules)
 # Single target: static folder mount (ckp:static designation)
+# Files land at image root so consumers can `COPY --from=cklib_source / dest/`
+# directly per SPEC.OCI.BUNDLE.v0.2.
+#
+# No npm install: ck-client.js loads nats.ws from https://esm.sh at runtime,
+# so node_modules in the bundle is dead weight (removed in v1.2.1).
 
-FROM node:20-bookworm AS builder
-
-WORKDIR /build
-
-# Copy source
-COPY package.json package-lock.json* ./
-COPY ck-*.js index.html ./
-COPY vendor/ vendor/
-COPY README.md LICENSE ./
-
-# Install dependencies (production only)
-RUN npm install --production && npm cache clean --force
-
-# Static artifact — mount as folder layer
 FROM scratch
 
-WORKDIR /ck-lib-js
-COPY --from=builder /build .
+COPY ck-*.js index.html /
+COPY vendor /vendor
+COPY README.md LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
 LABEL org.opencontainers.image.description="CKP v3.8 JavaScript client library — static folder mount artifact"
-LABEL org.opencontainers.image.version="1.2.0"
+LABEL org.opencontainers.image.version="1.2.1"
 LABEL org.opencontainers.image.source="https://github.com/ConceptKernel/CK.Lib.Js"
 LABEL org.opencontainers.image.designation="ckp:static"
