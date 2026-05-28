@@ -1,17 +1,19 @@
 name: oci-publish
 
-# Iteration #7: truly never-used filename to force fresh workflow_id.
-# v1.3.6 used publish.yml which GitHub recycled to the OLD workflow_id 256288279
-# (the original publish.yml from Apr 4 — deleted earlier, recreated today, possibly stuck).
-# oci-publish.yml has never existed in this repo. Will get a brand-new workflow_id.
+# v1.3.8 iteration: add SLSA Build Provenance v1 attestation via actions/attest-build-provenance@v1.
+# Per PROVENANCE.md Rule 1 / "What's enforced" table, this is the canonical builder of
+# ghcr.io/conceptkernel/ck-lib-js:<ver> and the source of the attestation that
+# update-latest-md.yml verifies before writing LATEST.md.
 
 on:
   push:
     tags: ["v*"]
 
 permissions:
-  contents: write
-  packages: write
+  contents: write       # tags, release object (later)
+  packages: write       # GHCR push
+  id-token: write       # Sigstore OIDC signing for attest-build-provenance
+  attestations: write   # attestations API
 
 jobs:
   publish:
@@ -23,6 +25,7 @@ jobs:
           echo "Ref: ${{ github.ref }}"
           echo "Ref name: ${{ github.ref_name }}"
           echo "SHA: ${{ github.sha }}"
+          echo "Run ID: ${{ github.run_id }}"
 
       - uses: actions/checkout@v4
 
@@ -57,23 +60,11 @@ jobs:
             org.opencontainers.image.source=https://github.com/ConceptKernel/CK.Lib.Js
             org.opencontainers.image.designation=ckp:static
 
-      - name: Create GitHub Release (bare-tag title per release-naming rule)
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
-            --notes "## Static OCI Bundle (\`ckp:static\`)
-
-\`\`\`bash
-docker pull ghcr.io/conceptkernel/ck-lib-js:${{ steps.v.outputs.version }}
-\`\`\`
-
-Multi-platform (linux/amd64, linux/arm64) · anonymous public access · built via GitHub Actions
-
-**Build provenance:** [run #${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) — commit \`${{ github.sha }}\`
-
-**Index digest:** \`${{ steps.build.outputs.digest }}\`
-
-See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for release notes." \
-            || echo "Release already exists, skipping"
+      # SLSA Build Provenance v1, signed by GitHub's Fulcio CA, recorded in Sigstore Rekor.
+      # Pushed as an OCI referrer so `gh attestation verify oci://...` can find it.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ghcr.io/conceptkernel/ck-lib-js
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true

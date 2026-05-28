@@ -1,5 +1,6 @@
-# CK.Lib.Js v1.3.7 OCI Bundle — Static Artifact (root layout, binary codec + display roles)
-# v1.3.7: pipeline iteration #7 — never-used filename oci-publish.yml (truly fresh workflow_id)
+# CK.Lib.Js v1.3.8 OCI Bundle — Static Artifact (root layout, binary codec + display roles)
+# v1.3.8: pipeline iteration #8 — adopt SLSA attestations + attestation-gated LATEST.md renderer
+#   (per PROVENANCE.md adopted from pgCK pattern, c558f0e)
 # Single target: static folder mount (ckp:static designation)
 # Files land at image root so consumers can `COPY --from=cklib_source / dest/`
 # directly per SPEC.OCI.BUNDLE.v0.2.
@@ -15,6 +16,6 @@ COPY README.md LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
 LABEL org.opencontainers.image.description="CKP v3.8 JavaScript client library — static folder mount artifact"
-LABEL org.opencontainers.image.version="1.3.7"
+LABEL org.opencontainers.image.version="1.3.8"
 LABEL org.opencontainers.image.source="https://github.com/ConceptKernel/CK.Lib.Js"
 LABEL org.opencontainers.image.designation="ckp:static"

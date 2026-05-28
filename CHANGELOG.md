@@ -2,6 +2,22 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.8] — 2026-05-28
+
+### Adopted PROVENANCE.md release policy
+- New file `PROVENANCE.md` adapted from pgCK's pattern: 5 hard rules (GHA-only builds, LATEST.md attestation gate, workflow-only LATEST.md writes, previous-tag-in-LATEST gate, release-often discipline) + bootstrap table + enforcement matrix + verify recipe.
+- `LATEST.md` rewritten to state "no attested release yet" per Rule 2; will be auto-populated by `update-latest-md.yml` after the first attested release.
+
+### Pipeline wiring
+- `oci-publish.yml` adds `actions/attest-build-provenance@v1` step → issues SLSA Build Provenance v1 attestation, signed by GitHub's Fulcio CA, recorded in Sigstore Rekor, pushed as OCI referrer. Requires new permissions: `id-token: write`, `attestations: write`.
+- New workflow `update-latest-md.yml` — the only allowed writer of `LATEST.md` per PROVENANCE Rule 3. Triggered by `workflow_run` of `oci-publish` on success. Verifies attestation via `gh attestation verify`; if accepted, renders and commits `LATEST.md` with version + per-arch digests + run URL + verify command.
+
+### Pipeline iteration #8
+- v1.3.4 → v1.3.7 attempts: tag-push events silently dropped (no GHA runs created) whenever the workflow included an in-pipeline `gh release create` step. v1.3.8 removes the release-create step (will be added via a separate workflow later if Rule 3 needs it) and adds the attestation step which is the higher-priority provenance contract.
+- Expected outcome: tag v1.3.8 push → `oci-publish` runs → builds + pushes + attests → `update-latest-md` fires on completion → verifies + writes LATEST.md.
+
+---
+
 ## [1.3.7] — 2026-05-28
 
 ### Pipeline iteration #7
