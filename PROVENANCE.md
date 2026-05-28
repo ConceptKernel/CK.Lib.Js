@@ -4,7 +4,7 @@
 
 1. **All builds and all GHCR pushes run on GitHub Actions only.** Workstation `docker push`, `docker buildx --push`, `oras push`, `gh release create`, `gh release edit`, `gh release delete`, or any equivalent local-credential publish is prohibited. Local CLI is allowed only for git operations (`git commit`, `git tag`, `git push`) and read-only inspection (`gh run list`, `gh api ... GET`, `docker pull`, `docker buildx imagetools inspect`).
 2. **`LATEST.md` MUST NOT carry any version that was published manually or that lacks a verifiable SLSA Build Provenance v1 attestation.** If `gh attestation verify` rejects (or has no record of) the digest in question, that digest is not "the latest" — the file stays where it was. There is no manual-edit exception, not even to seed initial state. When no attested release has been produced yet, `LATEST.md` says so plainly.
-3. **The only allowed write to `LATEST.md` is from `.github/workflows/update-latest-md.yml`,** which renders the file only after `gh attestation verify` accepts every digest it is about to advertise. Any other write is treated as drift and will be reverted by the next workflow run.
+3. **`LATEST.md` is only written by a GHA workflow that has just verified attestation in the same job.** Currently that workflow is `.github/workflows/oci-publish.yml` (which builds, attests, verifies, and renders `LATEST.md` in one job). Any out-of-band write (local edit, separate non-attesting workflow) is treated as drift and will be overwritten by the next release.
 4. **A new version tag MUST NOT be pushed unless the previous tag in the same series is already advertised in `LATEST.md`.** Concretely: do not tag `v1.3.10` until `v1.3.9` shows up in `LATEST.md`. This guarantees the previous release went through the attestation gate end-to-end. Tagging ahead of the gate breaks the chain and creates orphan releases the policy cannot retroactively verify.
 5. **Release often, in small focused groups.** Each release pairs one or more closed items from `CHANGELOG.md` with exactly one attested OCI artifact. Pipeline-only iteration bumps (no source-code change) are explicitly fine when the goal is to exercise/repair the release pipeline itself.
 
@@ -111,7 +111,7 @@ This iteration discipline is normative — see `memory/feedback_tag_must_pair_wi
 
 ## Audit trail
 
-- Workflow source: `.github/workflows/oci-publish.yml`, `.github/workflows/update-latest-md.yml`
+- Workflow source: `.github/workflows/oci-publish.yml` (single workflow does build + push + attest + verify + GitHub Release + LATEST.md write, in that order, all gated on attestation success)
 - Attestation generator: `actions/attest-build-provenance@v1` (Sigstore-backed)
 - Verifier: `gh attestation verify` (built into `gh` 2.49+)
 - LATEST.md renderer: lives inside `update-latest-md.yml`; queries the package versions API + verifies attestations before any write

@@ -2,6 +2,16 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.9] — 2026-05-28
+
+### Pipeline iteration #9 — collapsed pipeline (one workflow, end-to-end)
+- v1.3.8 confirmed GHA build + push + SLSA attestation works; `gh attestation verify` accepts the v1.3.8 digest. However the chained `workflow_run` event from `oci-publish` → `update-latest-md` was blackholed (no run created), so LATEST.md was not auto-updated.
+- v1.3.9 collapses everything into a single workflow `oci-publish.yml`: build → push → attest → `gh attestation verify` (Rule 2 gate) → render LATEST.md → `gh release create` → commit LATEST.md to main. No chained workflow event needed.
+- `update-latest-md.yml` deleted.
+- `PROVENANCE.md` Rule 3 amended to permit any workflow that gates on attestation in the same job (instead of naming a specific separate workflow). Single-workflow setup is the canonical path for this repo.
+
+---
+
 ## [1.3.8] — 2026-05-28
 
 ### Adopted PROVENANCE.md release policy
