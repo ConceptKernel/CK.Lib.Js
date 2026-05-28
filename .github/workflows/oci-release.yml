@@ -4,10 +4,18 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (e.g., 1.3.0) — used when triggering manually"
+        required: true
+        type: string
 
 jobs:
   oci:
     name: Build and publish multi-platform OCI image
+    # Only run on tag push or manual dispatch; ignore stray branch-push events
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -24,12 +32,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract version from tag
+      - name: Resolve version
         id: version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
-          echo "Building ck-lib-js:${VERSION}"
+          echo "Building ck-lib-js:${VERSION} (event=${{ github.event_name }}, ref=${GITHUB_REF_NAME})"
 
       - name: Build and push static bundle
         uses: docker/build-push-action@v5
@@ -48,6 +60,7 @@ jobs:
             org.opencontainers.image.designation=ckp:static
 
       - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -59,6 +72,6 @@ jobs:
 docker pull ghcr.io/conceptkernel/ck-lib-js:${{ steps.version.outputs.version }}
 \`\`\`
 
-Multi-platform (linux/amd64, linux/arm64) · anonymous public access · ~80 KB
+Multi-platform (linux/amd64, linux/arm64) · anonymous public access · ~220 KB
 See [CHANGELOG.md](https://github.com/ConceptKernel/CK.Lib.Js/blob/main/CHANGELOG.md) for release notes." \
             || echo "Release already exists, skipping"
