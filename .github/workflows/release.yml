@@ -1,6 +1,9 @@
 name: Publish CK.Lib.Js Bundle (v1.2.0+)
 
 on:
+  push:
+    tags:
+      - "v*"
   workflow_dispatch:
     inputs:
       version:
@@ -10,7 +13,7 @@ on:
 
 jobs:
   publish:
-    if: startsWith(github.ref, 'refs/tags/bundle-ck-lib-js-v') || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,7 +33,12 @@ jobs:
       - name: Set version
         id: version
         run: |
-          echo "version=${{ github.event.inputs.version }}" >> $GITHUB_OUTPUT
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
 
       - name: Build and push static image
         uses: docker/build-push-action@v5
@@ -49,8 +57,9 @@ jobs:
             org.opencontainers.image.designation=ckp:static
 
       - name: Create release
+        if: github.event_name == 'workflow_dispatch'
         run: |
-          gh release create bundle-ck-lib-js-v${{ steps.version.outputs.version }} \
+          gh release create v${{ steps.version.outputs.version }} \
             --title "CK.Lib.Js v${{ steps.version.outputs.version }}" \
             --notes "## Static Artifact (ckp:static)
 
