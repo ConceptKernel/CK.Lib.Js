@@ -2,6 +2,15 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.3] — 2026-05-28
+
+### Pipeline iteration #3
+- v1.3.2 attempt #2 progress: workflow file `release-pipeline.yml` correctly registered, tag-event routed (19s run on `v1.3.2`), multi-platform build succeeded. **But** the push step failed with `denied: permission_denied: write_package` — the GHCR package `ck-lib-js` had no Actions-access grant for the workflow.
+- **Fix between v1.3.2 and v1.3.3:** maintainer added `CK.Lib.Js` repo with `Write` role under https://github.com/orgs/ConceptKernel/packages/container/ck-lib-js/settings → "Manage Actions access".
+- v1.3.3 retests the full pipeline with the same workflow that built successfully in v1.3.2. Expected: GHA pushes `ck-lib-js:1.3.3` + `:latest` to GHCR with attached build provenance attestation, satisfying the LATEST.md GitHub-provenance requirement.
+
+---
+
 ## [1.3.2] — 2026-05-28
 
 ### Pipeline iteration #2

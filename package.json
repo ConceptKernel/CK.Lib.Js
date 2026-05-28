@@ -1,6 +1,6 @@
 {
   "name": "@conceptkernel/cklib",
-  "version": "1.3.2",
+  "version": "1.3.3",
   "description": "CKP v3.8 JavaScript client library — NATS WSS browser agent, Envoy Gateway ready",
   "type": "module",
   "main": "ck-client.js",
