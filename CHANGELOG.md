@@ -2,6 +2,14 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.10] — 2026-05-28
+
+### Changed
+- `LATEST.md` template (rendered by `oci-publish.yml`) rewritten to match pgRDF's `LATEST.md` structure: introduces per-arch table with Created (UTC) column, consolidated properties table (artifact type / aggregate index / aggregate digest / provenance / verify CLI / release notes / repo packages view), "Verifying any artifact above" section with both multi-arch and per-arch leaf verify commands + explanation of what successful verify means, "Pin policy" section.
+- No code or runtime change.
+
+---
+
 ## [1.3.9] — 2026-05-28
 
 ### Pipeline iteration #9 — collapsed pipeline (one workflow, end-to-end)
