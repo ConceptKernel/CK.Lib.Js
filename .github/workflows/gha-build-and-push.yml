@@ -1,4 +1,4 @@
-name: gha-build-and-push
+name: gha-build-and-push-v2
 
 on:
   push:
