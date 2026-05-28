@@ -1,13 +1,15 @@
-name: gha-build-and-push-v2
+name: gha-build-and-push-v3
 
 on:
+  release:
+    types: [published]
   push:
     tags:
       - "v*"
   workflow_dispatch:
     inputs:
       version:
-        description: "Release version (e.g., 1.3.0)"
+        description: "Release version (e.g., 1.3.1)"
         required: true
         type: string
 
@@ -17,7 +19,7 @@ permissions:
 
 jobs:
   build:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch' || github.event_name == 'release'
     runs-on: ubuntu-latest
 
     steps:
@@ -34,13 +36,14 @@ jobs:
       - name: Resolve version
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            V="${{ github.event.inputs.version }}"
-          else
-            V="${GITHUB_REF_NAME#v}"
-          fi
+          case "${{ github.event_name }}" in
+            workflow_dispatch) V="${{ github.event.inputs.version }}" ;;
+            release)           V="${GITHUB_REF_NAME#v}" ;;   # release event: ref is tag
+            push)              V="${GITHUB_REF_NAME#v}" ;;
+            *)                 V="unknown" ;;
+          esac
           echo "version=${V}" >> "$GITHUB_OUTPUT"
-          echo "Building ck-lib-js:${V} (event=${{ github.event_name }})"
+          echo "Building ck-lib-js:${V} (event=${{ github.event_name }}, ref=${GITHUB_REF_NAME})"
 
       - name: Build and push multi-platform OCI bundle
         uses: docker/build-push-action@v5
@@ -58,8 +61,10 @@ jobs:
             org.opencontainers.image.source=https://github.com/ConceptKernel/CK.Lib.Js
             org.opencontainers.image.designation=ckp:static
 
-      - name: Create GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v')
+      # When triggered by `release: published`, the release already exists — skip creation.
+      # When triggered by `push: tags` or `workflow_dispatch`, create it.
+      - name: Create GitHub Release (when not already from release event)
+        if: github.event_name != 'release' && startsWith(github.ref, 'refs/tags/v')
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |

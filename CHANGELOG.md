@@ -2,6 +2,21 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.1] — 2026-05-28
+
+### Changed
+- **Pipeline-only bump** — no source-code change. v1.3.1 exists solely to iterate the GitHub Actions release pipeline (the v1.3.0 tag did not pair with a GHA-built artifact due to a tag-push event routing issue; v1.3.1 attempts the `release: published` event as a different trigger bus).
+
+### Pipeline iteration #1
+- Workflow `.github/workflows/gha-build-and-push.yml` now responds to three event types:
+  - `release: types: [published]` (primary — different event bus, may bypass cached routing)
+  - `push: tags: ["v*"]` (kept as fallback)
+  - `workflow_dispatch` (kept for manual)
+- `Resolve version` step handles all three event sources.
+- `Create GitHub Release` step suppressed when triggered by `release: published` (release already exists in that path).
+
+---
+
 ## [1.3.0] — 2026-05-28
 
 ### Added — Long-Form Subject Support (v3.8 Canonical)
