@@ -2,6 +2,14 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.7] — 2026-05-28
+
+### Pipeline iteration #7
+- v1.3.6 used `publish.yml` — but GitHub recycled the OLD workflow_id `256288279` (from the original Apr 4 publish.yml). Recycled-id may carry stale routing state. Tag-push event still silently dropped.
+- v1.3.7: workflow renamed to `oci-publish.yml` — a filename that has NEVER existed in this repo's history. Expected to receive a brand-new workflow_id from GitHub and a fresh event-routing registration.
+
+---
+
 ## [1.3.6] — 2026-05-28
 
 ### Pipeline iteration #6

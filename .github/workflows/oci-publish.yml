@@ -1,10 +1,9 @@
-name: publish
+name: oci-publish
 
-# Iteration #6: fresh filename to force GitHub workflow re-registration.
-# v1.3.3 succeeded under release-pipeline.yml (then a fresh file).
-# v1.3.4 added in-pipeline release-create; v1.3.4 and v1.3.5 tag pushes silently dropped.
-# Hypothesis: GitHub's tag-event router gets stuck after some condition.
-# Fresh filename + no concurrency: should restore working state.
+# Iteration #7: truly never-used filename to force fresh workflow_id.
+# v1.3.6 used publish.yml which GitHub recycled to the OLD workflow_id 256288279
+# (the original publish.yml from Apr 4 — deleted earlier, recreated today, possibly stuck).
+# oci-publish.yml has never existed in this repo. Will get a brand-new workflow_id.
 
 on:
   push:
