@@ -1,17 +1,14 @@
-name: release-pipeline
+name: publish
 
-# Iteration #2 of v1.3.x pipeline-fixing series.
-# Fresh filename + filename-id pair so GitHub's cached workflow registration
-# from prior names (publish.yml, release.yml, oci-release.yml, gha-build-and-push.yml)
-# cannot interfere. Single trigger: tag push. concurrency: lock per tag.
+# Iteration #6: fresh filename to force GitHub workflow re-registration.
+# v1.3.3 succeeded under release-pipeline.yml (then a fresh file).
+# v1.3.4 added in-pipeline release-create; v1.3.4 and v1.3.5 tag pushes silently dropped.
+# Hypothesis: GitHub's tag-event router gets stuck after some condition.
+# Fresh filename + no concurrency: should restore working state.
 
 on:
   push:
     tags: ["v*"]
-
-concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: false
 
 permissions:
   contents: write

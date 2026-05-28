@@ -2,6 +2,14 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.6] — 2026-05-28
+
+### Pipeline iteration #6
+- v1.3.5 (no workflow edit) also didn't trigger — busts the "edit-breaks-routing" hypothesis.
+- v1.3.6: rename workflow `release-pipeline.yml` → `publish.yml` (fresh filename = new workflow_id = fresh GitHub registration) AND remove the `concurrency:` block (possible source of event dedupe). Workflow content otherwise unchanged from v1.3.4 (build+push+in-pipeline-release-create).
+
+---
+
 ## [1.3.5] — 2026-05-28
 
 ### Pipeline iteration #5
