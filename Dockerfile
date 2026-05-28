@@ -1,5 +1,5 @@
-# CK.Lib.Js v1.3.1 OCI Bundle — Static Artifact (root layout, binary codec + display roles)
-# v1.3.1: pipeline-only bump to iterate GHA tag→GHCR routing (no source code change)
+# CK.Lib.Js v1.3.2 OCI Bundle — Static Artifact (root layout, binary codec + display roles)
+# v1.3.2: pipeline iteration #2 — fresh workflow filename + concurrency: group
 # Single target: static folder mount (ckp:static designation)
 # Files land at image root so consumers can `COPY --from=cklib_source / dest/`
 # directly per SPEC.OCI.BUNDLE.v0.2.
@@ -15,6 +15,6 @@ COPY README.md LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
 LABEL org.opencontainers.image.description="CKP v3.8 JavaScript client library — static folder mount artifact"
-LABEL org.opencontainers.image.version="1.3.1"
+LABEL org.opencontainers.image.version="1.3.2"
 LABEL org.opencontainers.image.source="https://github.com/ConceptKernel/CK.Lib.Js"
 LABEL org.opencontainers.image.designation="ckp:static"

@@ -2,6 +2,15 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.2] — 2026-05-28
+
+### Pipeline iteration #2
+- v1.3.1 attempt #1 failed: `release: published` event also blackholed (only branch-push events fire workflows in this repo).
+- v1.3.2 attempt #2: fresh workflow filename `release-pipeline.yml` (deletes `gha-build-and-push.yml`), single trigger `push: tags: ["v*"]`, `concurrency: group: release-${{ github.ref }}` to break any potential stuck lock, no `if:` guard, minimal job surface.
+- No source-code change.
+
+---
+
 ## [1.3.1] — 2026-05-28
 
 ### Changed

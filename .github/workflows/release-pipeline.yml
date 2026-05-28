@@ -1,0 +1,61 @@
+name: release-pipeline
+
+# Iteration #2 of v1.3.x pipeline-fixing series.
+# Fresh filename + filename-id pair so GitHub's cached workflow registration
+# from prior names (publish.yml, release.yml, oci-release.yml, gha-build-and-push.yml)
+# cannot interfere. Single trigger: tag push. concurrency: lock per tag.
+
+on:
+  push:
+    tags: ["v*"]
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo trigger
+        run: |
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref: ${{ github.ref }}"
+          echo "Ref name: ${{ github.ref_name }}"
+          echo "SHA: ${{ github.sha }}"
+
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve version from tag
+        id: v
+        run: |
+          V="${GITHUB_REF_NAME#v}"
+          echo "version=${V}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push multi-platform OCI bundle
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ghcr.io/conceptkernel/ck-lib-js:${{ steps.v.outputs.version }}
+            ghcr.io/conceptkernel/ck-lib-js:latest
+          labels: |
+            org.opencontainers.image.title=CK.Lib.Js
+            org.opencontainers.image.description=CKP v3.8 JavaScript client library — static folder mount
+            org.opencontainers.image.version=${{ steps.v.outputs.version }}
+            org.opencontainers.image.source=https://github.com/ConceptKernel/CK.Lib.Js
+            org.opencontainers.image.designation=ckp:static
