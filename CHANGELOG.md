@@ -2,6 +2,15 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.5] — 2026-05-28
+
+### Pipeline iteration #5
+- v1.3.4 attempt: workflow file edit (added in-pipeline `gh release create` step) appears to have broken the tag-event routing — tag push to `v1.3.4` did not generate any GHA run (only branch-push from main commit, filtered).
+- Hypothesis: GitHub's workflow registration goes into a temporarily-broken state immediately after a workflow file edit. v1.3.3 worked because the workflow had just been created in a fresh state; v1.3.4 broke because the edit triggered re-parsing.
+- v1.3.5 tests the hypothesis: **no workflow file change**. Only version files bumped. If the v1.3.5 tag triggers the workflow (which still has the in-pipeline release-create step from v1.3.4), the hypothesis is confirmed AND the release-create step gets exercised.
+
+---
+
 ## [1.3.4] — 2026-05-28
 
 ### Pipeline iteration #4
