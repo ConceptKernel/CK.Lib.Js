@@ -1,35 +1,50 @@
 /**
  * CK Web Client — NATS WebSocket Client for Concept Kernels
  *
- * Self-contained ESM module. Loads nats.ws automatically.
+ * Self-contained ESM module. Loads nats.ws + @msgpack/msgpack from CDN.
  *
  * Usage:
  *   <script type="module" src="https://lib.tech.games/ck-client.js"></script>
  *   <script type="module">
  *     const ck = new CKClient({ kernel: 'TechGames.Cymatics' });
  *     await ck.connect();
- *     // done — subscribed to result + event, anonymous identity ready
+ *     // subscribed to result + event (both short-form alias AND v3.8 long-form), anonymous ready
  *
- *     ck.send({ action: 'ping' });              // → input.TechGames.Cymatics
- *     await ck.login('test26', 'test26');        // Keycloak JWT upgrade
- *     ck.logout();                               // back to anonymous
+ *     ck.send({ action: 'ping' });               // → input.TechGames.Cymatics  (short-form publish)
+ *     await ck.login('test26', 'test26');         // Keycloak JWT upgrade → RECONNECTS with JWT
+ *     ck.logout();                                // back to anonymous (reconnects)
  *
- *     ck.on('result', msg => ...);   // { subject, headers, data, traceId }
- *     ck.on('event',  msg => ...);   // { subject, headers, data, traceId }
- *     ck.on('status', state => ...); // { connection, auth }
+ *     ck.on('result',    msg => ...);  // { subject, headers, data, traceId }
+ *     ck.on('event',     msg => ...);  // codec-transparent: data is decoded (JSON or MsgPack)
+ *     ck.on('broadcast', msg => ...);  // non-kernel-derived subjects from extraSubjects:
+ *     ck.on('status',    state => ...);// { connection, auth }
+ *     ck.on('error',     err => ...);  // per-kernel errors on event.kernel.<K>.error
  *   </script>
  *
- * Design:
- *   - UI is dumb — CKClient owns all NATS complexity
- *   - Control attributes (Trace-Id, X-Kernel-ID, etc.) live in NATS headers, never in body
- *   - Body is pure application data
- *   - Anonymous-first, JWT hot-swap via Keycloak (techgames realm)
- *   - Future: subscription topics provided per-project per-user, upgradeable in-flight
- *   - Future: ontology-driven binary schemas pulled from each kernel
+ * Constructor options (v1.3.0+):
+ *   kernel            — kernel name (enables auto-subscribe to result/event)
+ *   wssEndpoint       — NATS WSS URL
+ *   realm, clientId   — Keycloak realm + client_id (default: 'pgck' or 'techgames', 'ck-browser')
+ *   subscribe         — ['event','result'] (default). Set ['event'] for broadcast-only roles.
+ *   extraSubjects     — ['broadcast.<project>.<channel>', ...] — emits on 'broadcast' channel
+ *   topicDefs         — caller-supplied topic list (advanced; overrides kernel-derived)
+ *   dictVersion       — current local dictionary version (default 0)
+ *
+ * Design (v1.3 contract per COMPLIANCE):
+ *   - NATS-only data plane. No REST API surface. Auth bootstrap uses Keycloak HTTP only.
+ *   - Control attributes in NATS headers; body is pure application data.
+ *   - Codec transparent: msg.data is always decoded (JSON v1.2 / MsgPack v1.3); codec on msg.headers.
+ *   - Per-subject dedup via Ck-Seq header (graceful: no header → no dedup).
+ *   - Dual-subscribe v1.3: receives both short-form (input.<K>) and long-form (input.kernel.<K>.action.<verb>).
+ *   - Auto-subscribe to event.kernel.Dictionary.* for internal IRI handle table maintenance.
+ *   - Reconnect on auth upgrade (login/logout/token refresh) for consistent permission ACLs.
  */
 
 import { connect, JSONCodec, headers } from "https://esm.sh/nats.ws@1.30.3";
+import { decode as msgpackDecode, encode as msgpackEncode } from "https://esm.sh/@msgpack/msgpack@3.0.0";
 const nats = { connect, JSONCodec, headers };
+
+const DEDUP_MAX_PER_SUBJECT = 1000;
 
 class CKClient {
     constructor(config = {}) {
@@ -40,58 +55,76 @@ class CKClient {
             authenticator: config.authenticator || null,
             authEndpoint: config.authEndpoint || 'https://id.tech.games',
             realm: config.realm || 'techgames',
-            clientId: config.clientId || 'ck-web',
+            clientId: config.clientId || 'ck-browser',
             stateEndpoint: config.stateEndpoint || '/api/state',
             maxReconnectAttempts: config.maxReconnectAttempts || 10,
             reconnectDelay: config.reconnectDelay || 1000,
         };
 
-        // Derive topics from kernel name
-        this.topics = {
-            input:  this.kernel ? `input.${this.kernel}`  : null,
-            result: this.kernel ? `result.${this.kernel}` : null,
-            event:  this.kernel ? `event.${this.kernel}`  : null,
+        // Channels to auto-subscribe (v1.3 — default preserves v1.2 behavior)
+        this._subscribeChannels = config.subscribe || ['event', 'result'];
+
+        // Extra non-kernel-derived subjects (v1.3) — emit on 'broadcast'
+        this._extraSubjects = config.extraSubjects || [];
+
+        // Per-kernel topic derivation. v1.3 carries BOTH forms:
+        //   short = input.<K> (v1.2 alias, deprecated, removed in v2.0)
+        //   long  = input.kernel.<K>.action.<verb> (v3.8 canonical)
+        this.topics = this.kernel ? {
+            input:           `input.${this.kernel}`,                                  // short publish
+            inputLongPrefix: `input.kernel.${this.kernel}.action.`,                   // long publish (append verb)
+            result:          `result.${this.kernel}`,                                 // short subscribe
+            resultLong:      `result.kernel.${this.kernel}.action.>`,                 // long subscribe wildcard
+            event:           `event.${this.kernel}`,                                  // short subscribe
+            eventLong:       `event.kernel.${this.kernel}.>`,                         // long subscribe wildcard
+            error:           `event.kernel.${this.kernel}.error`,                     // per-kernel error (v1.3)
+        } : null;
+
+        // Allow advanced callers to override completely
+        if (config.topicDefs) this.topicDefs = config.topicDefs;
+        else this.topicDefs = this.kernel ? [
+            { name: `input.${this.kernel}`,                       dir: 'pub', access: 'anon' },
+            { name: `input.kernel.${this.kernel}.action.>`,       dir: 'pub', access: 'anon' },
+            { name: `result.${this.kernel}`,                      dir: 'sub', access: 'anon' },
+            { name: `result.kernel.${this.kernel}.action.>`,      dir: 'sub', access: 'anon' },
+            { name: `event.${this.kernel}`,                       dir: 'sub', access: 'anon' },
+            { name: `event.kernel.${this.kernel}.>`,              dir: 'sub', access: 'anon' },
+            { name: `admin.${this.kernel}`,                       dir: 'pub', access: 'auth' },
+            { name: `metrics.${this.kernel}`,                     dir: 'sub', access: 'auth' },
+        ] : [];
+
+        // v1.3 dictionary state (per-project IRI handle table). Maintained internally.
+        this._dict = {
+            version: config.dictVersion || 0,
+            handles: new Map(),   // handle (int) → iri (string)
+            reverse: new Map(),   // iri (string) → handle (int)
         };
 
-        // Topic definitions with access levels (anon vs auth)
-        this.topicDefs = this.kernel ? [
-            { name: `input.${this.kernel}`,   dir: 'pub', access: 'anon' },
-            { name: `result.${this.kernel}`,  dir: 'sub', access: 'anon' },
-            { name: `event.${this.kernel}`,   dir: 'sub', access: 'anon' },
-            { name: `admin.${this.kernel}`,   dir: 'pub', access: 'auth' },
-            { name: `metrics.${this.kernel}`, dir: 'sub', access: 'auth' },
-        ] : [];
+        // v1.3 per-subject dedup state (Ck-Seq header)
+        this._seenSeqs = new Map();   // subject → Set<seq>
 
         this.nc = null;
         this._subs = [];
         this._clientId = this._id();
-        this.connection = 'disconnected';   // disconnected | connecting | connected | error
+        this.connection = 'disconnected';
         this.auth = { anonymous: true, userId: null, token: null, refreshToken: null };
 
-        this._handlers = { result: [], event: [], status: [], error: [] };
+        this._handlers = {
+            result: [], event: [], status: [], error: [], broadcast: [],
+        };
     }
 
     // ── Public API ───────────────────────────────────────────────────────
 
-    /** Connect to NATS, provision anonymous identity, auto-subscribe. */
+    /** Connect to NATS, provision anonymous identity, auto-subscribe per channels + extraSubjects. */
     async connect() {
         this._setConnection('connecting');
         try {
             this._setAnonymous();
-            const connectOpts = {
-                servers: this.config.wssEndpoint,
-                maxReconnectAttempts: this.config.maxReconnectAttempts,
-                reconnectTimeWait: this.config.reconnectDelay,
-            };
-            if (this.config.authenticator) connectOpts.authenticator = this.config.authenticator;
-            this.nc = await nats.connect(connectOpts);
+            this.nc = await this._openConnection();
             this._watchConnection();
             this._setConnection('connected');
-
-            // Auto-subscribe to result + event topics
-            if (this.topics.result) this._sub(this.topics.result, 'result');
-            if (this.topics.event)  this._sub(this.topics.event, 'event');
-
+            this._subscribeAll();
             return true;
         } catch (e) {
             this._setConnection('error', e);
@@ -99,20 +132,31 @@ class CKClient {
         }
     }
 
-    /** Send data to this kernel's input topic. Returns the generated traceId. */
+    /**
+     * Send data to this kernel. Publishes on short-form input.<K> for backwards compat;
+     * if data.action is present, also publishes on long-form input.kernel.<K>.action.<verb>.
+     * Returns the generated traceId.
+     */
     async send(data) {
         if (!this.nc) throw new Error('Not connected');
-        if (!this.topics.input) throw new Error('No kernel configured');
+        if (!this.topics) throw new Error('No kernel configured');
         await this._maybeRefreshToken();
         const traceId = this._traceId();
         const h = this._headers(traceId);
         const jc = nats.JSONCodec();
         const body = { timestamp: new Date().toISOString(), ...data };
-        this.nc.publish(this.topics.input, jc.encode(body), { headers: h });
+        const encoded = jc.encode(body);
+        // Short-form (deprecated, removed v2.0)
+        this.nc.publish(this.topics.input, encoded, { headers: h });
+        // Long-form (canonical v3.8) — only when caller provided an action verb
+        if (data && data.action) {
+            const longTopic = this.topics.inputLongPrefix + String(data.action);
+            this.nc.publish(longTopic, encoded, { headers: h });
+        }
         return traceId;
     }
 
-    /** Keycloak login — upgrades anonymous session to authenticated. */
+    /** Keycloak login → upgrade anonymous to authenticated → RECONNECT with JWT (v1.3 locked). */
     async login(username, password) {
         const url = `${this.config.authEndpoint}/realms/${this.config.realm}/protocol/openid-connect/token`;
         const res = await fetch(url, {
@@ -131,13 +175,15 @@ class CKClient {
             expiresAt: new Date(Date.now() + d.expires_in * 1000),
             claims: jwt,
         };
+        if (this.nc) await this._reconnectWithCurrentAuth();
         this._emitStatus();
         return this.auth.userId;
     }
 
-    /** Downgrade back to anonymous. */
-    logout() {
+    /** Downgrade back to anonymous and reconnect (drops authenticated permissions). */
+    async logout() {
         this._setAnonymous();
+        if (this.nc) await this._reconnectWithCurrentAuth();
         this._emitStatus();
     }
 
@@ -149,7 +195,7 @@ class CKClient {
         this._setConnection('disconnected');
     }
 
-    /** Save state to filer by logical key. CKClient owns URL construction. */
+    /** Save state to filer by logical key. */
     saveState(key, data, { keepalive = false } = {}) {
         const url = `${this.config.stateEndpoint}/${key}.json`;
         const opts = {
@@ -162,7 +208,7 @@ class CKClient {
         return fetch(url, opts);
     }
 
-    /** Load state from filer by logical key. Returns parsed JSON or null. */
+    /** Load state from filer by logical key. */
     async loadState(key) {
         await this._maybeRefreshToken();
         const url = `${this.config.stateEndpoint}/${key}.json`;
@@ -173,12 +219,19 @@ class CKClient {
         return res.json();
     }
 
-    /** Subscribe to events: 'result', 'event', 'status', 'error'. */
+    /** Subscribe to events: 'result', 'event', 'status', 'error', 'broadcast'. */
     on(event, fn) { if (this._handlers[event]) this._handlers[event].push(fn); }
     off(event, fn) {
         const a = this._handlers[event];
         if (a) { const i = a.indexOf(fn); if (i > -1) a.splice(i, 1); }
     }
+
+    /** v1.3 — lookup dictionary handle for an IRI (returns null if unknown). */
+    handleForIri(iri) { return this._dict.reverse.get(iri) ?? null; }
+    /** v1.3 — lookup IRI for a dictionary handle (returns null if unknown). */
+    iriForHandle(handle) { return this._dict.handles.get(handle) ?? null; }
+    /** v1.3 — current local dictionary version. */
+    get dictVersion() { return this._dict.version; }
 
     // ── Convenience getters ──────────────────────────────────────────────
 
@@ -188,6 +241,59 @@ class CKClient {
 
     // ── Internal ─────────────────────────────────────────────────────────
 
+    async _openConnection() {
+        const connectOpts = {
+            servers: this.config.wssEndpoint,
+            maxReconnectAttempts: this.config.maxReconnectAttempts,
+            reconnectTimeWait: this.config.reconnectDelay,
+            // v1.3: embed dictionary version + browser identity in CONNECT `name` field
+            // (NATS Core lacks structured CONNECT extensions; pgCK parses `name` server-side)
+            name: `ck-browser;dict-v=${this._dict.version};client=${this._clientId}`,
+        };
+        if (this.config.authenticator) connectOpts.authenticator = this.config.authenticator;
+        if (this.auth.token) connectOpts.token = this.auth.token;
+        return nats.connect(connectOpts);
+    }
+
+    async _reconnectWithCurrentAuth() {
+        for (const s of this._subs) { try { s.unsubscribe(); } catch (e) {} }
+        this._subs = [];
+        try { await this.nc.drain(); } catch (e) {}
+        this.nc = null;
+        this._setConnection('connecting');
+        this.nc = await this._openConnection();
+        this._watchConnection();
+        this._setConnection('connected');
+        this._subscribeAll();
+    }
+
+    _subscribeAll() {
+        if (!this.topics) {
+            // No kernel — still process extraSubjects
+            for (const subject of this._extraSubjects) this._sub(subject, 'broadcast');
+            return;
+        }
+
+        // result channel (short + long forms)
+        if (this._subscribeChannels.includes('result')) {
+            this._sub(this.topics.result,     'result');
+            this._sub(this.topics.resultLong, 'result');
+        }
+        // event channel (short + long forms)
+        if (this._subscribeChannels.includes('event')) {
+            this._sub(this.topics.event,     'event');
+            this._sub(this.topics.eventLong, 'event');
+        }
+        // error channel (always auto-subscribed when kernel is set; v1.3 §3 locked)
+        this._sub(this.topics.error, 'error');
+
+        // Dictionary subjects — internal handling, no user-facing emit
+        this._subDict();
+
+        // Extra subjects (broadcast.<project>.<channel> etc.)
+        for (const subject of this._extraSubjects) this._sub(subject, 'broadcast');
+    }
+
     _sub(topic, eventName) {
         const jc = nats.JSONCodec();
         const sub = this.nc.subscribe(topic);
@@ -195,14 +301,82 @@ class CKClient {
         (async () => {
             for await (const msg of sub) {
                 try {
-                    const data = jc.decode(msg.data);
+                    // Read headers (NATS header values are arrays of strings)
                     const hdrs = {};
-                    if (msg.headers) { for (const [k, v] of msg.headers) { hdrs[k] = v.join(','); } }
-                    const traceId = hdrs['Trace-Id'] || data.trace_id || '';
+                    if (msg.headers) for (const [k, v] of msg.headers) hdrs[k] = v.join(',');
+
+                    // Per-subject dedup via Ck-Seq header (graceful: no header → no dedup)
+                    const seqRaw = hdrs['Ck-Seq'] || hdrs['ck-seq'];
+                    if (seqRaw !== undefined) {
+                        if (this._isSeen(msg.subject, seqRaw)) continue;
+                        this._markSeen(msg.subject, seqRaw);
+                    }
+
+                    // Codec swap: Content-Encoding=msgpack → binary, else JSON
+                    const enc = hdrs['Content-Encoding'] || hdrs['content-encoding'];
+                    let data;
+                    if (enc && enc.toLowerCase() === 'msgpack') {
+                        data = msgpackDecode(msg.data);
+                    } else {
+                        data = jc.decode(msg.data);
+                    }
+
+                    const traceId = hdrs['Trace-Id'] || (data && data.trace_id) || '';
                     this._emit(eventName, { subject: msg.subject, headers: hdrs, data, traceId });
-                } catch (e) { console.error('[CKClient] decode error:', e); }
+                } catch (e) { console.error('[CKClient] decode error:', e, 'subject:', msg.subject); }
             }
         })();
+    }
+
+    _subDict() {
+        const subject = 'event.kernel.Dictionary.>';
+        const jc = nats.JSONCodec();
+        const sub = this.nc.subscribe(subject);
+        this._subs.push(sub);
+        (async () => {
+            for await (const msg of sub) {
+                try {
+                    const data = jc.decode(msg.data);
+                    if (msg.subject.endsWith('.v_bumped')) {
+                        // { from, to, delta: [{handle, iri}, ...] }
+                        if (data.from === this._dict.version) {
+                            for (const { handle, iri } of (data.delta || [])) {
+                                this._dict.handles.set(handle, iri);
+                                this._dict.reverse.set(iri, handle);
+                            }
+                            this._dict.version = data.to;
+                        }
+                        // Out-of-sync deltas are silently dropped; server resends snapshot on next CONNECT.
+                    } else if (msg.subject.endsWith('.snapshot')) {
+                        // { version, entries: [{handle, iri}, ...] }
+                        this._dict.handles.clear();
+                        this._dict.reverse.clear();
+                        for (const { handle, iri } of (data.entries || [])) {
+                            this._dict.handles.set(handle, iri);
+                            this._dict.reverse.set(iri, handle);
+                        }
+                        this._dict.version = data.version;
+                    }
+                    // Intentionally do NOT emit on 'event' — dictionary is internal infrastructure.
+                } catch (e) { console.error('[CKClient] dict decode error:', e); }
+            }
+        })();
+    }
+
+    _isSeen(subject, seq) {
+        const set = this._seenSeqs.get(subject);
+        return set ? set.has(seq) : false;
+    }
+
+    _markSeen(subject, seq) {
+        let set = this._seenSeqs.get(subject);
+        if (!set) { set = new Set(); this._seenSeqs.set(subject, set); }
+        set.add(seq);
+        // Simple eviction: when set exceeds cap, drop oldest half
+        if (set.size > DEDUP_MAX_PER_SUBJECT) {
+            const arr = Array.from(set);
+            for (const s of arr.slice(0, Math.floor(DEDUP_MAX_PER_SUBJECT / 2))) set.delete(s);
+        }
     }
 
     _headers(traceId) {
@@ -230,12 +404,20 @@ class CKClient {
                     refresh_token: this.auth.refreshToken,
                 }),
             });
-            if (!res.ok) { this._setAnonymous(); this._emitStatus(); return; }
+            if (!res.ok) {
+                // Refresh failed — fall back to anonymous + reconnect (v1.3 locked)
+                this._setAnonymous();
+                if (this.nc) await this._reconnectWithCurrentAuth();
+                this._emitStatus();
+                return;
+            }
             const d = await res.json();
             this.auth.token = d.access_token;
             this.auth.expiresAt = new Date(Date.now() + d.expires_in * 1000);
             if (d.refresh_token) this.auth.refreshToken = d.refresh_token;
             this.auth.claims = this._parseJwt(d.access_token);
+            // v1.3 locked: reconnect on token refresh to refresh server-side permissions
+            if (this.nc) await this._reconnectWithCurrentAuth();
             this._emitStatus();
         } catch (e) {
             console.warn('[CKClient] Token refresh failed:', e.message);
@@ -278,5 +460,5 @@ class CKClient {
 }
 
 if (typeof window !== 'undefined') window.CKClient = CKClient;
-export { CKClient };
+export { CKClient, msgpackEncode, msgpackDecode };
 export default CKClient;

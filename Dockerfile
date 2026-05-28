@@ -1,4 +1,4 @@
-# CK.Lib.Js v1.2.1 OCI Bundle — Static Artifact (root layout, no node_modules)
+# CK.Lib.Js v1.3.0 OCI Bundle — Static Artifact (root layout, binary codec + display roles)
 # Single target: static folder mount (ckp:static designation)
 # Files land at image root so consumers can `COPY --from=cklib_source / dest/`
 # directly per SPEC.OCI.BUNDLE.v0.2.
@@ -14,6 +14,6 @@ COPY README.md LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
 LABEL org.opencontainers.image.description="CKP v3.8 JavaScript client library — static folder mount artifact"
-LABEL org.opencontainers.image.version="1.2.1"
+LABEL org.opencontainers.image.version="1.3.0"
 LABEL org.opencontainers.image.source="https://github.com/ConceptKernel/CK.Lib.Js"
 LABEL org.opencontainers.image.designation="ckp:static"

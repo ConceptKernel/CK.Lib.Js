@@ -2,6 +2,68 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.0] — 2026-05-28
+
+### Added — Long-Form Subject Support (v3.8 Canonical)
+- **Dual-subscribe** on `result.<K>` (short) AND `result.kernel.<K>.action.>` (long, v3.8 canonical)
+- **Dual-subscribe** on `event.<K>` (short) AND `event.kernel.<K>.>` (long)
+- **Dual-publish** on `input.<K>` (short) AND `input.kernel.<K>.action.<verb>` (long, when `data.action` is present)
+- Short-form subjects marked **deprecated**; will be removed in v2.0
+
+### Added — Display / Broadcast / Observer Roles
+- **`subscribe:` constructor option** — opt out of `result` channel for broadcast-only roles (e.g. `subscribe: ['event']`). Default `['event','result']` preserves v1.2 behavior.
+- **`extraSubjects:` constructor option** — subscribe to non-kernel-derived subjects (e.g. `broadcast.<project>.<channel>`, `event.CK.Compliance.violation`). Emits via `ck.on('broadcast', ...)`.
+- **`topicDefs:` constructor option** — advanced callers can override the kernel-derived topic list entirely.
+
+### Added — Binary Wire Profile (Codec-Transparent)
+- **MessagePack codec support** for `event.kernel.*` and `stream.kernel.*` messages
+- Codec selection via `Content-Encoding: msgpack` header (JSON when absent)
+- `ck.on('event', handler)` signature unchanged across codec swap; `msg.data` always exposes decoded payload
+- MessagePack loaded from `https://esm.sh/@msgpack/msgpack@3.0.0` (same CDN pattern as nats.ws)
+
+### Added — Per-Subject Deduplication
+- Reads `Ck-Seq` header on incoming messages, dedups against per-subject `Set<seq>`
+- Cap of 1000 entries per subject; LRU-style eviction at threshold
+- Graceful degrade: if `Ck-Seq` header is absent, no dedup (v1.2-compatible behavior)
+- `seq` source is publisher-assigned (per pgCK §C lock: `ckp.ledger.id`); browser doesn't generate
+
+### Added — IRI Dictionary (Per-Project) Auto-Sync
+- Auto-subscribes to `event.kernel.Dictionary.v_bumped` + `.snapshot` when `kernel:` is set
+- Maintains internal `handles` ↔ `reverse` map (int → IRI both directions)
+- `dictVersion: <N>` constructor option (default 0); embedded in NATS CONNECT `name` field for server-side snapshot delivery
+- New public API: `ck.handleForIri(iri)` / `ck.iriForHandle(handle)` / `ck.dictVersion`
+- Dictionary messages do NOT emit on `'event'` channel — internal infrastructure
+
+### Added — Per-Kernel Error Broadcast
+- Auto-subscribes to `event.kernel.<K>.error` when `kernel:` is set
+- Emits via `ck.on('error', handler)` (existing channel; new traffic source)
+
+### Changed — Reconnect on Auth Upgrade
+- `ck.login(user, pass)` now closes NATS and reconnects with JWT in CONNECT options (was: in-place token update)
+- `ck.logout()` reconnects as anonymous (drops authenticated permissions cleanly)
+- Token refresh (`_maybeRefreshToken`) also reconnects to refresh server-side permission ACLs
+- Locked per pgCK §G.3 + §15 (consistent reconnect strategy across all auth state changes)
+
+### Changed — Default `clientId`
+- Default client_id changed from `ck-web` to `ck-browser` (per pgCK §11 confirmation)
+- Override via `clientId:` constructor option (e.g., per-tenant in marketplace SKU)
+
+### Changed — README Subject Family Table
+- Long-form subjects now documented as canonical
+- Short-form aliases explicitly marked deprecated with v2.0 removal target
+- Added v1.3 additions: `event.kernel.<K>.error`, `event.kernel.Dictionary.*`, `event.CK.Compliance.violation`
+
+### Compatibility
+- **No breaking changes from v1.2.x.** All existing CKClient code continues to work.
+- v1.2.x callers that subscribed only to short-form subjects continue to receive events.
+- Dictionary + binary paths activate transparently when pgCK starts publishing the relevant messages (pgCK v0.2 dependency).
+
+### Coordination
+- v1.3.0 design surface fully locked via three-turn NOTIFY exchange with pgCK (see internal `_WIP/NOTIFIES.pgCK.v1.3.0.transport-binary-identity-alignment*` files).
+- Per pgCK §F: requires pgCK v0.2 for `ckp.dictionary` table + `ckp.ledger.id` → wire-seq plumbing. CKClient v1.3.0 ships with graceful JSON fallback when those server-side pieces aren't yet shipped.
+
+---
+
 ## [1.2.1] — 2026-05-28
 
 ### Fixed
@@ -66,9 +128,9 @@ Pin `bundle.yaml` `source_image:` to `ghcr.io/conceptkernel/ck-lib-js:1.2.1`.
 | **1.1.0** | Core JSON profile | ✓ Released |
 | **1.2.0** | OCI bundle + GHCR publishing | ✓ Released |
 | **1.2.1** | OCI layout fix + bundle slim-down | ✓ Released |
-| **1.3.0** | Binary compact delta + dedup + display roles | ⧗ Planned |
-| **1.4.0** | Keycloak / JWT identity plumbing | ⧗ Planned |
-| **2.0.0** | TypeScript definitions + API stabilization (no REST API, ever) | ⧗ Planned |
+| **1.3.0** | Binary codec + dedup + display roles + long-form subjects | ✓ Released |
+| **1.4.0** | Keycloak / JWT identity plumbing (per-tenant realm) | ⧗ Planned |
+| **2.0.0** | TypeScript definitions + remove short-form subjects (no REST API, ever) | ⧗ Planned |
 
 ---
 

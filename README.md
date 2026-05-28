@@ -62,11 +62,22 @@ const nc = await connect({
 });
 ```
 
-**Subject families (CKP v3.8 normative):**
-- `input.kernel.MyKernel.action.*` — inbound actions
-- `result.kernel.MyKernel.action.*` — action results
-- `event.kernel.MyKernel.*` — state change events
-- `stream.kernel.MyKernel.*` — optional observer feeds
+**Subject families:**
+
+Long-form (CKP v3.8 normative — canonical from v1.3.0):
+- `input.kernel.<Kernel>.action.<verb>` — inbound action dispatch
+- `result.kernel.<Kernel>.action.<verb>` — action result
+- `event.kernel.<Kernel>.<event>` — state change events
+- `event.kernel.<Kernel>.error` — per-kernel error broadcast (v1.3.0+)
+- `event.kernel.Dictionary.v_bumped` / `.snapshot` — internal dictionary sync (v1.3.0+)
+- `stream.kernel.<Kernel>.<stream>` — optional observer feeds
+- `event.CK.Compliance.violation` — global LOCKS contract violations (opt-in via `extraSubjects:`)
+- `broadcast.<project>.<channel>` — non-kernel-derived broadcasts (opt-in via `extraSubjects:`)
+
+Short-form aliases (v1.2.x compatibility, **deprecated**, removed in v2.0):
+- `input.<Kernel>`, `result.<Kernel>`, `event.<Kernel>`
+
+CKClient v1.3.0+ subscribes to BOTH forms; publishes on both `input.<Kernel>` (short) and `input.kernel.<Kernel>.action.<verb>` (long, when `data.action` is present) so callers transition transparently.
 
 ### pgCK Governance Layer
 

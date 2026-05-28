@@ -1,8 +1,8 @@
 # CK.Lib.Js Compliance & Requirements
 
-**Version:** 1.1.0  
-**Status:** v3.8 alignment (production-ready)  
-**Date:** 2026-05-26
+**Version:** 1.3.0  
+**Status:** v3.8 alignment (production-ready, binary codec + display roles + long-form subjects)  
+**Date:** 2026-05-28
 
 ---
 
