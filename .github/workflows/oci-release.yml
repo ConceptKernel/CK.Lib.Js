@@ -1,19 +1,13 @@
-name: Publish CK.Lib.Js Bundle (v1.2.0+)
+name: OCI Release (tag v* → ghcr.io/conceptkernel/ck-lib-js)
 
 on:
   push:
     tags:
       - "v*"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Release version (e.g., 1.2.0)"
-        required: true
-        type: string
 
 jobs:
-  publish:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+  oci:
+    name: Build and publish multi-platform OCI image
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -30,17 +24,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set version
+      - name: Extract version from tag
         id: version
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF_NAME#v}"
-          fi
+          VERSION="${GITHUB_REF_NAME#v}"
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building ck-lib-js:${VERSION}"
 
-      - name: Build and push static image
+      - name: Build and push static bundle
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -56,17 +47,18 @@ jobs:
             org.opencontainers.image.source=https://github.com/ConceptKernel/CK.Lib.Js
             org.opencontainers.image.designation=ckp:static
 
-      - name: Create release
-        if: github.event_name == 'workflow_dispatch'
+      - name: Create GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release create v${{ steps.version.outputs.version }} \
-            --title "CK.Lib.Js v${{ steps.version.outputs.version }}" \
-            --notes "## Static Artifact (ckp:static)
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "CK.Lib.Js ${GITHUB_REF_NAME}" \
+            --notes "## Static OCI Bundle (ckp:static)
 
 \`\`\`bash
 docker pull ghcr.io/conceptkernel/ck-lib-js:${{ steps.version.outputs.version }}
 \`\`\`
 
-Multi-platform (linux/amd64, linux/arm64), anonymous public access via GHCR."
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+Multi-platform (linux/amd64, linux/arm64) · anonymous public access · ~80 KB
+See [CHANGELOG.md](https://github.com/ConceptKernel/CK.Lib.Js/blob/main/CHANGELOG.md) for release notes." \
+            || echo "Release already exists, skipping"
