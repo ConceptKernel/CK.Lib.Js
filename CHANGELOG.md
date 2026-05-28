@@ -2,6 +2,15 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.4] — 2026-05-28
+
+### Pipeline iteration #4
+- v1.3.3 confirmed end-to-end GHA build+push works (run #26591475079, 24s, success). However the v1.3.3 GitHub Release object was created manually via `gh release create` from local CLI — a violation of the rule that ALL release operations happen inside GHA.
+- v1.3.4 adds a `gh release create` step to `release-pipeline.yml` so the Release object is created by the workflow itself with a clean bare-tag title (`v1.3.4`, no decorations) and notes that include the run URL, commit SHA, and index digest as built-in provenance.
+- The v1.3.3 release was deleted; the v1.3.3 tag and image remain on GHCR as the historical record of the first GHA-built image.
+
+---
+
 ## [1.3.3] — 2026-05-28
 
 ### Pipeline iteration #3

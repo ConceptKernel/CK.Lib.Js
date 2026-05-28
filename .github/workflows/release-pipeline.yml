@@ -45,6 +45,7 @@ jobs:
           echo "version=${V}" >> "$GITHUB_OUTPUT"
 
       - name: Build and push multi-platform OCI bundle
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
@@ -59,3 +60,24 @@ jobs:
             org.opencontainers.image.version=${{ steps.v.outputs.version }}
             org.opencontainers.image.source=https://github.com/ConceptKernel/CK.Lib.Js
             org.opencontainers.image.designation=ckp:static
+
+      - name: Create GitHub Release (bare-tag title per release-naming rule)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --notes "## Static OCI Bundle (\`ckp:static\`)
+
+\`\`\`bash
+docker pull ghcr.io/conceptkernel/ck-lib-js:${{ steps.v.outputs.version }}
+\`\`\`
+
+Multi-platform (linux/amd64, linux/arm64) · anonymous public access · built via GitHub Actions
+
+**Build provenance:** [run #${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}) — commit \`${{ github.sha }}\`
+
+**Index digest:** \`${{ steps.build.outputs.digest }}\`
+
+See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/main/CHANGELOG.md) for release notes." \
+            || echo "Release already exists, skipping"
