@@ -1,31 +1,56 @@
 # CK.Lib.Js — latest attested release
 
-**Status: NO ATTESTED RELEASE YET.**
+> Rendered automatically by `.github/workflows/oci-publish.yml` on 2026-05-28 18:58:10 UTC after `gh attestation verify` accepted the digest below. See [`PROVENANCE.md`](./PROVENANCE.md) for the policy.
 
-Per [`PROVENANCE.md`](./PROVENANCE.md) Rule 2, `LATEST.md` MUST NOT carry any version that was published manually or that lacks a verifiable SLSA Build Provenance v1 attestation. Per Rule 3, this file is only written by `.github/workflows/update-latest-md.yml` after `gh attestation verify` accepts the artifact.
+## Static OCI bundle — `v1.3.9`
 
-No release on this repo has yet completed the attested-build path (GitHub Actions → `actions/attest-build-provenance@v1` → `gh attestation verify` → renderer). This file will be auto-populated when the first attested release lands.
+```bash
+docker pull ghcr.io/conceptkernel/ck-lib-js:1.3.9
+```
 
-## What exists on GHCR right now (pre-policy, NOT advertised here)
+### Per-architecture digests
 
-The following images are on GHCR but pre-date the provenance policy and are not pointed to by this file:
+| arch  | Pull URI                                | Also tagged | Digest |
+|-------|-----------------------------------------|-------------|--------|
+| amd64 | `ghcr.io/conceptkernel/ck-lib-js:1.3.9` | `latest`  | `sha256:7cc93c03309563971d745b28736226cb784c352afdbe217bcb5d2b34c6a6b37d` |
+| arm64 | `ghcr.io/conceptkernel/ck-lib-js:1.3.9` | `latest`  | `sha256:c1b56a8260b8e897eb93dae43dddce60597b7fc533f8d354f2549177ff9642c3` |
 
-- `ghcr.io/conceptkernel/ck-lib-js:1.3.3` — last image built by GitHub Actions (run [#26591475079](https://github.com/ConceptKernel/CK.Lib.Js/actions/runs/26591475079)); however the corresponding GitHub Release object was created manually and then deleted, so the release-side of the chain is incomplete and Rule 2 disqualifies it.
-- `ghcr.io/conceptkernel/ck-lib-js:1.3.0`, `:1.2.1`, `:1.2.0` — all built via local `docker buildx --push` (no GHA attestation).
+### Artifact properties
 
-See [`PROVENANCE.md` §Bootstrap](./PROVENANCE.md#one-time-bootstrap-rule-4-transition) for the full pre-policy table.
+|                       |                                                                              |
+|-----------------------|------------------------------------------------------------------------------|
+| Artifact type         | OCI image index (multi-arch); `org.opencontainers.image.designation=ckp:static` |
+| Index digest          | `sha256:94fc5d738f8c656071937ee1d865d79d959b0eff65a80d8f3e8ff0cad4b9c8c8`                                                                  |
+| Designation           | `ckp:static`                                                                |
 
-## Next steps
+## GitHub provenance (SLSA Build Provenance v1)
 
-The pipeline is being iterated to produce the first fully-attested release (see [`CHANGELOG.md`](./CHANGELOG.md) iteration entries). When that lands:
+|                       |                                                                              |
+|-----------------------|------------------------------------------------------------------------------|
+| Workflow run          | https://github.com/ConceptKernel/CK.Lib.Js/actions/runs/26595692316              |
+| Built from commit     | [`dacf8df86c197045168c1fd81f819cf06fa01cd3`](https://github.com/ConceptKernel/CK.Lib.Js/commit/dacf8df86c197045168c1fd81f819cf06fa01cd3)       |
+| Tag                   | [v1.3.9](https://github.com/ConceptKernel/CK.Lib.Js/releases/tag/v1.3.9)     |
+| Attestation generator | [`actions/attest-build-provenance@v1`](https://github.com/actions/attest-build-provenance) (Sigstore-backed) |
+| Verify locally        | `gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:1.3.9 --repo ConceptKernel/CK.Lib.Js` |
 
-- `update-latest-md.yml` will rewrite this file with the version, multi-arch digests, build run URL, attestation verify command, and pull instructions.
-- Rule 4 then applies: subsequent tags cannot be pushed until this file lists the previous tag.
+## Use as static layer
 
-## See also
+In your `bundle.yaml` (per SPEC.OCI.BUNDLE.v0.2):
 
-- [`PROVENANCE.md`](./PROVENANCE.md) — full release policy, enforcement, verify recipe
-- [`CHANGELOG.md`](./CHANGELOG.md) — per-version notes including pipeline iteration history
-- [`COMPLIANCE.md`](./COMPLIANCE.md) — runtime / transport contract
-- [`README.md`](./README.md) — library overview and ESM exports
-- [Repo packages](https://github.com/ConceptKernel/CK.Lib.Js/pkgs/container/ck-lib-js) — full GHCR version history (most pre-policy)
+```yaml
+spec_version: 0.2
+static_web:
+  - source_image: ghcr.io/conceptkernel/ck-lib-js:1.3.9
+    route: /cklib
+```
+
+Browser consumption (after the bundle is mounted at `/cklib/`):
+
+```html
+<script type="module">
+  import { CKPage } from '/cklib/ck-page.js';
+  await CKPage.init();
+</script>
+```
+
+See [`README.md`](./README.md) for the full ESM export surface, [`CHANGELOG.md`](./CHANGELOG.md) for release notes, [`COMPLIANCE.md`](./COMPLIANCE.md) for the v3.8 transport contract, [`PROVENANCE.md`](./PROVENANCE.md) for the release policy.
