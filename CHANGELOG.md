@@ -2,6 +2,21 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.11] — 2026-05-29
+
+### Changed
+- Aligned to [`SPEC.OCI.BUNDLE.v0.3`](https://github.com/sporaxis-com/oci-germination/blob/main/SPEC.OCI.BUNDLE.v0.3.md) — supersedes v0.2 as the authoritative packaging protocol for the fleet. CK.Lib.Js is recognized under v0.3 as a **Shape A (filesystem-layer OCI image)** artifact (§1.1) — already the shape we shipped from `FROM scratch` since v1.2.0, no Dockerfile restructure required.
+- `Dockerfile` adds `LABEL org.opencontainers.image.licenses=MIT` per v0.3 §2.1 (Recommended manifest labels for Shape A).
+- `.github/workflows/oci-publish.yml` build step now injects `org.opencontainers.image.revision` (git SHA), `org.opencontainers.image.created` (commit timestamp), and `org.opencontainers.image.licenses` labels per v0.3 §2.1 Required + Recommended set.
+- `LATEST.md` render template (in `oci-publish.yml`) updated: spec link points to `SPEC.OCI.BUNDLE.v0.3.md`; bundle.yaml example bumped to `spec_version: 0.3` and now shows BOTH the v0.2-compatible `static_web[]` form AND the new v0.3 `layer_sources[]` form, each with the required `attestation_repo: ConceptKernel/CK.Lib.Js` field per v0.3 §3.2 / §3.4; an explicit reference to the v0.3 §4 build-time `gh attestation verify` gate added.
+- `COMPLIANCE.md` reference updated from `SPEC.OCI.BUNDLE.v0.1.md` to `SPEC.OCI.BUNDLE.v0.3.md` with explicit Shape A designation note.
+
+### Compatibility
+- No wire-format change. The pulled image is byte-for-byte identical in shape and content to v1.3.10 (apart from the added OCI labels and the version string). Existing `static_web:` declarations in downstream `bundle.yaml` files continue to render correctly under v0.3 generators (§10 backwards compatibility).
+- Downstream consumers (`oci-germination`'s `bundle-ck-allinone`, `bundle-pg17-pgrdf-pgck-web-cklib`, `bundle-pg17-pgrdf-pgck-static-cklib`) MAY bump their `spec_version: 0.2` → `0.3` and add `attestation_repo: ConceptKernel/CK.Lib.Js` to the CK.Lib.Js entry to opt into v0.3's pre-build attestation gate. Bumping is non-blocking.
+
+---
+
 ## [1.3.10] — 2026-05-28
 
 ### Changed

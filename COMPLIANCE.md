@@ -246,6 +246,6 @@ v1.1.0              v1.2.0            v1.3.0              v2.0.0
 ## References
 
 - **Sporaxis OCI Germination:** https://github.com/sporaxis-com/oci-germination
-- **Bundle spec:** SPEC.OCI.BUNDLE.v0.1.md (Sporaxis repo)
+- **Bundle spec:** SPEC.OCI.BUNDLE.v0.3.md (Sporaxis repo) — CK.Lib.Js ships as a Shape A filesystem-layer OCI image (§1.1); downstream consumers declare it via `static_web[]` (routed) or `layer_sources[]` (additive merge) with `attestation_repo: ConceptKernel/CK.Lib.Js` per §3
 - **CKP v3.8 Subject families:** SPEC.CKP.v3.8-rc-06-nats.md (pgCK _WIP)
 - **pgCK Deployment:** SPEC.PGCK.DEPLOY.v0.1.md (pgCK _WIP)

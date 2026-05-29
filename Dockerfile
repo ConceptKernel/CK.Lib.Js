@@ -1,8 +1,9 @@
-# CK.Lib.Js v1.3.10 OCI Bundle — Static Artifact (root layout, binary codec + display roles)
-# v1.3.10: LATEST.md template rewritten to match pgRDF structure (better attestation surface)
+# CK.Lib.Js v1.3.11 OCI Bundle — Static Artifact (root layout, binary codec + display roles)
+# v1.3.11: aligned to SPEC.OCI.BUNDLE.v0.3 (Shape A filesystem-layer OCI; §2.1 labels filled out).
 # Single target: static folder mount (ckp:static designation)
 # Files land at image root so consumers can `COPY --from=cklib_source / dest/`
-# directly per SPEC.OCI.BUNDLE.v0.2.
+# directly per SPEC.OCI.BUNDLE.v0.3 — declarable as either `static_web[]` (v0.2-compatible,
+# routed) or `layer_sources[]` (v0.3 additive merge) in a downstream `bundle.yaml`.
 #
 # No npm install: ck-client.js loads nats.ws from https://esm.sh at runtime,
 # so node_modules in the bundle is dead weight (removed in v1.2.1).
@@ -15,6 +16,7 @@ COPY README.md LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
 LABEL org.opencontainers.image.description="CKP v3.8 JavaScript client library — static folder mount artifact"
-LABEL org.opencontainers.image.version="1.3.10"
+LABEL org.opencontainers.image.version="1.3.11"
 LABEL org.opencontainers.image.source="https://github.com/ConceptKernel/CK.Lib.Js"
+LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.designation="ckp:static"
