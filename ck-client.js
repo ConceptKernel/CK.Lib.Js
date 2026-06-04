@@ -322,10 +322,54 @@ class CKClient {
                     }
 
                     const traceId = hdrs['Trace-Id'] || (data && data.trace_id) || '';
-                    this._emit(eventName, { subject: msg.subject, headers: hdrs, data, traceId });
+
+                    // v1.3.12 — typed envelope: derive kind/subjectIri/conceptType/kernel/verb.
+                    // Additive fields; existing consumers reading only {subject,headers,data,traceId} unaffected.
+                    const { kind, subjectIri, conceptType, kernel, verb } =
+                        this._deriveEnvelope(eventName, msg.subject, data);
+
+                    this._emit(eventName, {
+                        subject: msg.subject, headers: hdrs, data, traceId,
+                        kind, subjectIri, conceptType, kernel, verb,
+                    });
                 } catch (e) { console.error('[CKClient] decode error:', e, 'subject:', msg.subject); }
             }
         })();
+    }
+
+    /**
+     * v1.3.12 — derive typed-envelope fields from the eventName + NATS subject + decoded body.
+     * - kind         : 'event' | 'result' | 'broadcast' | 'error' (the channel the consumer is subscribed to)
+     * - subjectIri   : data['@id'] when present (pgCK seal projection stamps this), else null
+     * - conceptType  : data['type'] ?? data['@type'] — string | string[] | null
+     * - kernel       : 'pgCK.Task' parsed from NATS subject (long-form `<kind>.kernel.<K>.<verb>` preferred,
+     *                  short-form `<kind>.<K>` fallback; null for broadcast/extraSubjects)
+     * - verb         : last subject segment in long-form (e.g. 'sealed'); null in short-form / broadcast
+     */
+    _deriveEnvelope(eventName, natsSubject, data) {
+        const kind = eventName;
+
+        let kernel = null, verb = null;
+        // Long form: event.kernel.<K-with-dots>.<verb>  /  input.kernel.<K>.action.<verb>
+        const longMatch = /^(?:event|input|result|stream)\.kernel\.(.+)\.([^.]+)$/.exec(natsSubject);
+        if (longMatch) {
+            kernel = longMatch[1];
+            // For input/result subjects with .action.<verb>, strip the trailing '.action' off kernel
+            if (kernel.endsWith('.action')) kernel = kernel.slice(0, -'.action'.length);
+            verb = longMatch[2];
+        } else {
+            // Short form: event.<K-with-dots>  (deprecated v1.x alias)
+            const shortMatch = /^(?:event|input|result|stream)\.(.+)$/.exec(natsSubject);
+            if (shortMatch) kernel = shortMatch[1];
+        }
+
+        let subjectIri = null, conceptType = null;
+        if (data && typeof data === 'object') {
+            if (typeof data['@id'] === 'string') subjectIri = data['@id'];
+            conceptType = data['@type'] ?? data['type'] ?? null;
+        }
+
+        return { kind, subjectIri, conceptType, kernel, verb };
     }
 
     _subDict() {

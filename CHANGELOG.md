@@ -2,6 +2,29 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.12] — 2026-06-04
+
+### Added — Typed envelope on delivered messages (additive)
+Per pgCK NOTIFY thread `v1.3.11.rdfjs-typed-message-store` (RESPONSE adjacent in pgCK `_WIP/`), the `event` / `result` / `broadcast` / `error` channels now deliver five additional fields alongside the existing `{ subject, headers, data, traceId }`:
+
+| Field | Derivation | Use |
+|---|---|---|
+| `msg.kind` | the channel name (`event` / `result` / `broadcast` / `error`) | what kind of message this is, without re-deriving from subject grammar |
+| `msg.subjectIri` | `data['@id']` when present; else `null` | the IRI/URN of the sealed instance — populated for events from pgCK seal projection (their commit `7e94893` stamps `@id = ckp://<Type>#<id>`) |
+| `msg.conceptType` | `data['@type'] ?? data['type']` | the SHACL/concept type (string or array of strings) |
+| `msg.kernel` | parsed from NATS subject: long-form `<kind>.kernel.<K>.<verb>` (strips trailing `.action` for input/result) or short-form `<kind>.<K>` fallback | the kernel name (e.g. `pgCK.Task`) without splitting on `.` ambiguity |
+| `msg.verb` | last segment in long-form (e.g. `sealed`, `created`); `null` in short-form / broadcast | the event/action verb |
+
+### Compatibility
+- **No breaking changes.** All v1.3.x consumers that read only `subject` / `headers` / `data` / `traceId` continue to work unchanged.
+- New fields are derived once at delivery time from the NATS subject + decoded body. The body remains the source of truth — these fields are caches/projections.
+- For pre-`@id`-stamped bodies (non-sealed paths, transient errors, legacy events), `subjectIri` is `null`. Consumers fall back to body inspection if needed.
+
+### Coordination
+Locks the v1.3.12 commitment from `_WIP/NOTIFIES.pgCK.v1.4.0.ckhexstore-decision-locked-roadmap.md`. pgCK web2's placeholder `rdfjs/engine.js` can pivot on `msg.subjectIri` and `msg.conceptType` directly; no need to re-grep subject grammar. Next: v1.3.13 ships `ck-rdf-bridge.js` (the `toQuads()` per-message bridge), v1.4 ships `ck-hex-store.js` (CKHexStore — the locked in-client store flavor).
+
+---
+
 ## [1.3.11] — 2026-05-29
 
 ### Changed
