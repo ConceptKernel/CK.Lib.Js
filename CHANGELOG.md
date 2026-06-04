@@ -2,6 +2,39 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.13] — 2026-06-04
+
+### Added — `ck-rdf-bridge.js` (optional RDF/JS Quad bridge)
+New file `ck-rdf-bridge.js` exposes:
+
+- **Static** `toQuads(msg, opts)` — convert a CKClient envelope into an array of rdf.js Quads. Lazy-loads `@rdfjs/data-model@2.1.0` from `esm.sh` on first call (same CDN-import pattern as `nats.ws` and `@msgpack/msgpack`).
+- **Instance** `ck.toQuads(msg, opts)` — added to `CKClient.prototype` when the bridge file is imported. Closes over `this.iriForHandle()` so binary-delta wire path auto-resolves dictionary handles.
+
+Handles both envelope shapes:
+
+| Shape | Body looks like | Behavior |
+|---|---|---|
+| JSON-LD body (v1.2 / v1.3 JSON path) | `{ "@id": "…", "type": "…", "<predIri>": <value>, … }` | One quad per non-control property + rdf:type quads from `msg.conceptType` (v1.3.12) |
+| Binary delta (v1.3 binary path) | `{ e, p, o, g?, seq? }` | Single quad; `e`/`p`/`o`/`g` either inline IRI strings or uint32 handles inflated via dictionary |
+
+Literal typing: strings → `xsd:string` (or `namedNode` if they look IRI-shaped per `https?://`, `urn:`, `ckp:`, `did:`, `tag:` heuristic); integers → `xsd:integer`; non-integers → `xsd:decimal`; booleans → `xsd:boolean`. Object refs detected via `{"@id":"…"}` shape → `namedNode`.
+
+### Compatibility
+- **Zero bundle cost when not imported.** Consumers who do not `import './ck-rdf-bridge.js'` pay nothing — neither the bridge code (~3.5 KB raw) nor the lazy `@rdfjs/data-model` CDN load.
+- **No CKClient changes.** Bridge is purely additive on `CKClient.prototype` and pulls only from the v1.3.12 typed-envelope fields + dictionary API already shipped in v1.3.x.
+- **No new wire/contract behavior.** This is a converter, not a protocol change.
+
+### Package entry
+New export added: `import { toQuads } from '@conceptkernel/cklib/rdf-bridge'` (npm staging) or `import { toQuads } from '/cklib/ck-rdf-bridge.js'` (OCI bundle).
+
+### Coordination
+Closes the v1.3.13 commitment from `_WIP/NOTIFIES.pgCK.v1.4.0.ckhexstore-decision-locked-roadmap.md`. The `toQuads()` bridge stays even though pgCK locked CKHexStore as the in-client store flavor (the bridge serves per-message conversion / export needs orthogonal to the store choice). If pgCK confirms the bridge is redundant given upcoming `CKHexStore.toRdfJs()`, it can be deprecated in v1.4+ — no removal in v1.3.x line.
+
+### Next
+- v1.4: `ck-hex-store.js` (CKHexStore — 6-way hex index over uint32 dictionary handles, no library dep, ~5 KB inline). Will be preceded by `SPEC.CK.LIB.JS.HEXSTORE.v0.1.md` for pgCK review.
+
+---
+
 ## [1.3.12] — 2026-06-04
 
 ### Added — Typed envelope on delivered messages (additive)
