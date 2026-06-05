@@ -365,8 +365,29 @@ class CKClient {
 
         let subjectIri = null, conceptType = null;
         if (data && typeof data === 'object') {
-            if (typeof data['@id'] === 'string') subjectIri = data['@id'];
             conceptType = data['@type'] ?? data['type'] ?? null;
+            if (typeof data['@id'] === 'string') {
+                subjectIri = data['@id'];
+            } else if (conceptType) {
+                // v1.3.14 defensive fallback (per pgCK NOTIFY thread §2): when @id is absent,
+                // derive subjectIri from conceptType + the type's id predicate
+                // (e.g. Task → .../task_id). NEVER pick `urn:ckp:participant:*` values as the
+                // subject — those identify the actor of the action, not the affected resource.
+                const typeStr = Array.isArray(conceptType) ? conceptType[0] : conceptType;
+                if (typeof typeStr === 'string') {
+                    const typeName = typeStr.split(/[/#]/).pop();
+                    if (typeName) {
+                        const idKeyTail = typeName.toLowerCase() + '_id';
+                        for (const [k, v] of Object.entries(data)) {
+                            if (k.endsWith(idKeyTail) && typeof v === 'string'
+                                && !v.startsWith('urn:ckp:participant:')) {
+                                subjectIri = v;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         return { kind, subjectIri, conceptType, kernel, verb };

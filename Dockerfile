@@ -1,5 +1,5 @@
-# CK.Lib.Js v1.3.13 OCI Bundle — Static Artifact (root layout, binary codec + display roles)
-# v1.3.13: ck-rdf-bridge.js — optional per-message RDF/JS Quad bridge (toQuads). Lazy CDN load.
+# CK.Lib.Js v1.3.14 OCI Bundle — Static Artifact (root layout, binary codec + display roles)
+# v1.3.14: native RDF/JS bridge (zero deps, no esm.sh) + @id-absent defensive fallback in envelope.
 # Single target: static folder mount (ckp:static designation)
 # Files land at image root so consumers can `COPY --from=cklib_source / dest/`
 # directly per SPEC.OCI.BUNDLE.v0.3 — declarable as either `static_web[]` (v0.2-compatible,
@@ -16,7 +16,7 @@ COPY README.md LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
 LABEL org.opencontainers.image.description="CKP v3.8 JavaScript client library — static folder mount artifact"
-LABEL org.opencontainers.image.version="1.3.13"
+LABEL org.opencontainers.image.version="1.3.14"
 LABEL org.opencontainers.image.source="https://github.com/ConceptKernel/CK.Lib.Js"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.designation="ckp:static"

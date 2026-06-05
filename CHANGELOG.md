@@ -2,6 +2,26 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.3.14] — 2026-06-05
+
+### Changed — `ck-rdf-bridge.js` re-cut with native DataFactory (zero runtime deps)
+Per pgCK NOTIFY thread `v1.3.11.rdfjs-typed-message-store` RESPONSE-RESPONSE (4 Jun): **drop ALL external RDF libraries, including lazy-loaded `@rdfjs/data-model` from esm.sh.** A runtime CDN dependency breaks the offline / air-gapped / attested-bundle posture.
+
+- `ck-rdf-bridge.js` now ships a hand-rolled, W3C-spec-compliant DataFactory (~60 lines: `NamedNode` / `BlankNode` / `Literal` / `Variable` / `DefaultGraph` / `Quad`). Zero `import()` calls. No esm.sh. No `@rdfjs/*` packages.
+- `dataFactory` is now exported alongside `toQuads` for consumers who want spec-compliant RDF/JS terms without an external library.
+- `toQuads()` is now **synchronous** (the previous async signature was only needed for the async esm.sh import). Backward compatibility: `await toQuads(msg)` still works since the value is just a synchronous return.
+
+### Added — `@id`-absent defensive fallback in `_deriveEnvelope`
+Per pgCK NOTIFY thread §2: when `data['@id']` is absent, derive `subjectIri` from `conceptType` + the type's id predicate (e.g. for `Task` type, look for body key ending in `task_id`). **Never pick `urn:ckp:participant:*` values** as the subject — those identify the actor of the action, not the affected resource. Safe complement to pgCK's `ckp.seal` projection that stamps `@id` for sealed events.
+
+### Fixed — broken `SPEC.CK.LIB.JS.PUBLIC.v1.0.md` link in LATEST.md template
+`SPEC.CK.LIB.JS.PUBLIC.v1.0.md` moved to gitignored `_WIP/` today (along with all other SPEC drafts). LATEST.md template in `oci-publish.yml` updated to drop the now-broken link.
+
+### Coordination
+Closes pgCK's RESPONSE-RESPONSE corrections. Next: v1.4 CKHexStore promotion from `_WIP/ck-hex-store/` skeleton to root, using the same native DataFactory.
+
+---
+
 ## [1.3.13] — 2026-06-04
 
 ### Added — `ck-rdf-bridge.js` (optional RDF/JS Quad bridge)

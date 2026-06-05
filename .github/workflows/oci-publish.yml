@@ -107,7 +107,7 @@ jobs:
           cat > LATEST.md <<EOF
           # CK.Lib.Js — latest published artifacts
 
-          One publishable surface ships from this repo: the **OCI static bundle** (\`ckp:static\` designation) — a CKP v3.8 JavaScript client library shipped as a Shape A filesystem-layer OCI image per [SPEC.OCI.BUNDLE.v0.3](https://github.com/sporaxis-com/oci-germination/blob/main/SPEC.OCI.BUNDLE.v0.3.md). The npm package \`@conceptkernel/cklib\` is staged in \`package.json\` but not yet released — see [\`SPEC.CK.LIB.JS.PUBLIC.v1.0\`](./SPEC.CK.LIB.JS.PUBLIC.v1.0.md). See [Repo packages view](https://github.com/${REPO}/pkgs/container/ck-lib-js) for the full version history.
+          One publishable surface ships from this repo: the **OCI static bundle** (\`ckp:static\` designation) — a CKP v3.8 JavaScript client library shipped as a Shape A filesystem-layer OCI image per [SPEC.OCI.BUNDLE.v0.3](https://github.com/sporaxis-com/oci-germination/blob/main/SPEC.OCI.BUNDLE.v0.3.md). The npm package \`@conceptkernel/cklib\` is staged in \`package.json\` but not yet released. See [Repo packages view](https://github.com/${REPO}/pkgs/container/ck-lib-js) for the full version history.
 
           ## CK.Lib.Js OCI bundle — \`${TAG}\`
 
