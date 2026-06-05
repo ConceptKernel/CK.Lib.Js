@@ -2,6 +2,62 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.4.0] — 2026-06-05
+
+### Added — CKHexStore at repo root (`ck-hex-store.js`)
+The native, 6-way hex-indexed in-memory quad store lands at root and ships in the OCI bundle. Skeleton was incubated under `ck-hex-store/` since commit `36629b7`; promoted now per pgCK's APPROVAL of the design (see RESPONSE files in `_WIP/`).
+
+**Public API (per pgCK-RESPONSE §3 — web2 placeholder migration is a pure import-swap):**
+
+| Surface | Returns |
+|---|---|
+| `new CKHexStore(ck, opts?)` | instance — closes over CKClient for handles + dispatch |
+| `insert(msg)` | `bigint[]` — newly added quadIds (drops, dedups, or applies replace-by-subject) |
+| `remove(quadId)` / `removeBySubject(iriOrHandle)` | `boolean` / `number` |
+| `match({ s?, p?, o?, g? })` | `bigint[]` quadIds, selectivity-aware over 6 indexes |
+| `inflate(quadId)` / `inflateAll(qids)` | `{s, p, o, g}` IRI / literal records |
+| `size` | total quad count |
+| `subjects` | distinct-subject count |
+| `predicates()` | `[{predicate, count}, …]` |
+| `classes()` / `types()` | `[{type, count}, …]` distinct rdf:type objects |
+| `recent(n)` | last n inflated quads in insertion order (bounded ring buffer, default 1024) |
+| `toRdfJs()` | W3C RDF/JS spec-compliant DatasetCore view — **native, zero deps** |
+| `bind(urn, fn, opts?)` / `bindOnce` | URN-pattern dispatch for sealed events / actions |
+| `invoke(urn, payload, opts?)` / `ask(urn, params, opts?)` | trace-correlated request/reply over `ck.send()` |
+| `view(iri)` | reactive `CKView` materializer (microtask-batched `change` events) |
+| `on('insert'/'remove'/'remap', fn)` | low-level diagnostic events |
+
+### Default ingest semantics — **replace-by-subject** (per pgCK-RESPONSE §3 Q3)
+Re-seals (same `@id` arriving with a new body) now `removeBySubject(@id)` then re-insert, so stale quads don't accrete across updates. Opt out via `{ replaceBySubject: false }` for append-only / event-sourced consumers.
+
+### Object handling — predicate-tail whitelist for refs (per pgCK-RESPONSE §2 Q2)
+Bare strings at these predicate tails always resolve to NamedNode refs:
+- `target_kernel` (e.g. `"pgCK"`)
+- `part_of_goal` (e.g. `"backlog:pgCK"`)
+- `created_by` (e.g. `"urn:ckp:participant:peter"`)
+
+All other strings → literals. The IRI-shape heuristic (`https?://`, `urn:`, `ckp:`, `did:`, `tag:`) is NOT trusted for pgCK's bare-string values — only this whitelist forces NamedNode resolution. Plus the explicit `{"@id": "…"}` shape continues to be a NamedNode ref everywhere.
+
+### Zero runtime dependencies (the through-line)
+`toRdfJs()` imports the W3C-spec DataFactory from sibling `ck-rdf-bridge.js` (also dependency-free, hand-rolled). The returned DatasetCore is a small native implementation (~30 lines, set-based identity dedup, full match/add/delete/has/iterator surface). **No `@rdfjs/*` packages anywhere. No `esm.sh` anywhere. No `import()` of any URL.** Same offline / air-gapped / attested-bundle posture as the rest of the stack.
+
+### Package
+- `"./hex-store": "./ck-hex-store.js"` added to `package.json` exports.
+- Dockerfile's existing `COPY ck-*.js index.html /` picks up `ck-hex-store.js` automatically. Bundle size impact: ~5 KB added (the file is 935 LOC, mostly comments and the 6-index plumbing).
+
+### Coordination
+Implements the v1.4 commitment from:
+- `_WIP/NOTIFIES.pgCK.v1.4.0.ckhexstore-decision-locked-roadmap.md` + its RESPONSE
+- `_WIP/NOTIFIES.pgCK.v1.4.0.ckhexstore-spec-v0.1-for-review.md` + its RESPONSE (APPROVED + 6 answers locked + esm.sh blocker eliminated)
+- `_WIP/ck-hex-store/SPEC.HEXSTORE.TESTING-WITHOUT-NATS-AND-PGCK.v3.8.1.md` T2 (esm.sh-removal closes the offline-testability gap; smoke can now exercise `toRdfJs()` end-to-end)
+
+### Not in scope for v1.4 (deferred)
+- Real-pgCK corpus capture (testing spec T1) — needs live pgCK or pgCK-side CI publish (T4 ask in NOTIFY)
+- `event.kernel.pgCK.snapshot` bulk-replay verb (pgCK side, non-blocking)
+- pgCK `Dictionary.snapshot` publish (pgCK v0.2 line; CKHexStore self-allocates local handles until then)
+
+---
+
 ## [1.3.14] — 2026-06-05
 
 ### Changed — `ck-rdf-bridge.js` re-cut with native DataFactory (zero runtime deps)

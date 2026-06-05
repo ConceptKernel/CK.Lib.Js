@@ -1,6 +1,6 @@
 {
   "name": "@conceptkernel/cklib",
-  "version": "1.3.14",
+  "version": "1.4.0",
   "description": "CKP v3.8 JavaScript client library — NATS WSS browser agent, Envoy Gateway ready",
   "type": "module",
   "main": "ck-client.js",
@@ -17,7 +17,8 @@
     "./shapes": "./ck-shapes.js",
     "./anim": "./ck-anim.js",
     "./sound": "./ck-sound.js",
-    "./rdf-bridge": "./ck-rdf-bridge.js"
+    "./rdf-bridge": "./ck-rdf-bridge.js",
+    "./hex-store": "./ck-hex-store.js"
   },
   "files": [
     "ck-*.js",

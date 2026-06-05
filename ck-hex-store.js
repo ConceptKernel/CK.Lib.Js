@@ -1,17 +1,17 @@
 /**
  * ck-hex-store.js — CKHexStore: URN-native, 6-way hex-indexed mirror of pgCK's governed graph.
  *
- * Specs:
- *   ./SPEC.CK.HEXSTORE.v0.1.md     — wire input, hex indexes, dictionary, projection rules
- *   ./SPEC.CK.HEXSTORE.v3.8.1.md   — URN-native developer surface (bind / invoke / view / urn)
+ * Ships at v1.4 at the OCI bundle root (/cklib/ck-hex-store.js).
  *
- * Status: skeleton implementation for pgCK review against the v3.8.1 spec.
- * Target ship: CK.Lib.Js v1.4 at /ck-hex-store.js (root). During incubation it
- * lives in this subfolder so the README + specs + skeleton co-evolve.
+ * Zero runtime dependencies. The W3C RDF/JS DataFactory is imported from the
+ * sibling `ck-rdf-bridge.js` (also dependency-free, hand-rolled) so toRdfJs()
+ * has no `import()` of any external library. No esm.sh, no @rdfjs/*, ever.
+ * Rationale: a browser opened against an air-gapped pgck deployment must not
+ * reach any CDN at runtime — same posture as the rest of the stack.
  *
- * Usage (minimum):
- *   import { CKClient }   from '../ck-client.js';
- *   import { CKHexStore } from './ck-hex-store.js';
+ * Usage:
+ *   import { CKClient }   from '/cklib/ck-client.js';
+ *   import { CKHexStore } from '/cklib/ck-hex-store.js';
  *
  *   const ck    = new CKClient({ kernel: 'pgCK.Task' });
  *   const store = new CKHexStore(ck);
@@ -21,20 +21,33 @@
  *
  *   store.bind('ckp://Kernel#pgCK.Task/sealed', e => console.log('sealed', e.subject));
  *   const result = await store.invoke('ckp://Action#pgCK.Task.create', { title: 'x' });
- *   const view   = store.view('ckp://Instance#FC-T-0001');
- *   view.on('change', d => render(view));
+ *
+ *   // pgCK-RESPONSE §3 surface (web2 placeholder migration is an import-swap):
+ *   store.size                    // total quad count
+ *   store.subjects                // distinct-subject count (getter)
+ *   store.predicates()            // [{ predicate: iri, count }, …]
+ *   store.classes()  / store.types()  // [{ type: iri, count }, …]
+ *   store.recent(n)               // insertion-ordered last n quads (inflated)
+ *
+ * Default ingest semantics (per pgCK-RESPONSE §3 Q3):
+ *   JSON-LD body insert with an @id calls `removeBySubject(@id)` first, then
+ *   re-inserts — so re-seals (same @id, new body) REPLACE rather than ACCRETE.
+ *   Opt out via `{ replaceBySubject: false }` constructor opt for append-only.
+ *
+ * Object handling (per pgCK-RESPONSE §2 Q2):
+ *   - Predicate-tail whitelist (`target_kernel` / `part_of_goal` / `created_by`)
+ *     → NamedNode ref even if value doesn't look like an IRI.
+ *   - `{"@id": "…"}` value shape → NamedNode ref.
+ *   - Everything else → literal (the IRI-shape heuristic is NOT trusted for
+ *     pgCK's bare-string values).
  *
  * Not shipped yet (pgCK side):
- *   - event.kernel.Dictionary.* publish (canonical handle allocation; v0.1 §5 local-dict workaround applies)
- *   - msgpack binary publish path (JSON-LD path is the v3.8.1 default; binary code-path is present but inert)
+ *   - event.kernel.Dictionary.* publish (canonical handle allocation; local-dict workaround applies)
+ *   - msgpack binary publish path (JSON-LD path is the default; binary code-path is present but inert)
  *   - CK.Core resolve/affordances/proof/validate affordances (wrappers reject with 'NotShippedYet')
  */
 
-// No top-level imports — CKClient is duck-typed via the constructor argument
-// (read: ck.dictVersion, ck.handleForIri, ck.iriForHandle, ck.on, ck.off, ck.send,
-// ck.kernel). This keeps the skeleton runnable in any ESM environment, including
-// Node test runners that can't resolve esm.sh URLs at load time. The RDF/JS
-// adapter (§8) is the only place an https:// import occurs, and it's lazy.
+import { dataFactory as DF } from './ck-rdf-bridge.js';
 
 const LOCAL_HANDLE_START = 2147483648;   // 2^31 — keeps below server-assigned space
 const DEFAULT_INVOKE_TIMEOUT_MS = 30000;
@@ -42,6 +55,16 @@ const RDF_TYPE_IRI = 'http://www.w3.org/1999/02/22-rdf-syntax-ns#type';
 const XSD = 'http://www.w3.org/2001/XMLSchema#';
 const CONTROL_KEYS = new Set(['@id', '@type', '@context', 'id', 'type', 'trace_id', 'timestamp']);
 const IRI_LOOK = /^(?:https?:\/\/|urn:|ckp:|did:|tag:)/;
+
+// pgCK-RESPONSE §2 Q2: predicate-tail whitelist — these IRI keys always resolve
+// to NamedNode refs regardless of value shape. Bare strings like "pgCK",
+// "backlog:pgCK", "urn:ckp:participant:peter" are IRIs at these positions.
+const REF_PREDICATE_TAILS = new Set(['target_kernel', 'part_of_goal', 'created_by']);
+function predicateIsRef(iriKey) {
+    // strip trailing fragment / path segment and compare to whitelist
+    const tail = iriKey.split(/[/#]/).pop();
+    return REF_PREDICATE_TAILS.has(tail);
+}
 
 export class CKHexStore {
 
@@ -55,6 +78,10 @@ export class CKHexStore {
             defaultGraph:     opts.defaultGraph     ?? 0,
             warnOnFullScan:   opts.warnOnFullScan   ?? true,
             timeoutMs:        opts.timeoutMs        ?? DEFAULT_INVOKE_TIMEOUT_MS,
+            // pgCK-RESPONSE §3 Q3: replace-by-subject is the DEFAULT for JSON-LD inserts.
+            replaceBySubject: opts.replaceBySubject ?? true,
+            // pgCK-RESPONSE §3: insertion-ordered recent() needs a bounded ring buffer.
+            recentCapacity:   opts.recentCapacity   ?? 1024,
         };
 
         // ── v0.1 §4 storage ─────────────────────────────────────────────
@@ -66,6 +93,11 @@ export class CKHexStore {
         this.osp = new Map();
         this.ops = new Map();
         this.bySeq = new Map();                // Ck-Seq → quadId (replay correlation)
+
+        // pgCK-RESPONSE §3: insertion-ordered ring buffer for recent(n)
+        this._recent = new Array(this.opts.recentCapacity).fill(null);
+        this._recentHead = 0;
+        this._recentFilled = 0;
 
         // ── v0.1 §5 local dictionary ────────────────────────────────────
         this._localDict = {
@@ -136,6 +168,15 @@ export class CKHexStore {
         }
         const s = this._handleFor(subjectIri);
 
+        // pgCK-RESPONSE §3 Q3: DEFAULT replace-by-subject for re-seal semantics.
+        // Same @id arriving with a new body → drop the prior subject's quads,
+        // then re-insert. Prevents stale-quad accretion on re-seals.
+        // Opt out via opts.replaceBySubject = false (append-only mode).
+        let removed = [];
+        if (this.opts.replaceBySubject !== false) {
+            removed = this._removeBySubjectHandle(s);
+        }
+
         const added = [];
 
         // rdf:type quads
@@ -155,9 +196,10 @@ export class CKHexStore {
         for (const [key, value] of Object.entries(data)) {
             if (CONTROL_KEYS.has(key)) continue;
             const p = this._handleFor(key);
+            const isRef = predicateIsRef(key);   // pgCK-RESPONSE §2 Q2
             const values = Array.isArray(value) ? value : [value];
             for (const v of values) {
-                const o = this._objectFrom(v);
+                const o = this._objectFrom(v, isRef);
                 if (o == null) continue;
                 const qid = this._addQuad(s, p, o, this.opts.defaultGraph);
                 if (qid != null) added.push(qid);
@@ -166,10 +208,10 @@ export class CKHexStore {
 
         if (seq !== undefined && added.length) this.bySeq.set(seq, added[0]);
 
-        if (added.length) {
-            this._emit('insert', { quadIds: added, msg });
+        if (added.length || removed.length) {
+            this._emit('insert', { quadIds: added, removedQuadIds: removed, msg });
             this._dispatchBinds(msg, subjectIri, added);
-            this._notifyViews(subjectIri, added, /*removed*/ []);
+            this._notifyViews(subjectIri, added, removed);
         }
         return added;
     }
@@ -215,10 +257,18 @@ export class CKHexStore {
         const s = typeof iriOrHandle === 'number' ? iriOrHandle : this._handleFor(iriOrHandle);
         const ps = this.spo.get(s);
         if (!ps) return 0;
+        return this._removeBySubjectHandle(s).length;
+    }
+
+    // Internal: same as removeBySubject(handle) but returns the removed quadIds
+    // (so the JSON-LD insert path can emit them in the 'insert' event for view notification).
+    _removeBySubjectHandle(s) {
+        const ps = this.spo.get(s);
+        if (!ps) return [];
         const ids = [];
         for (const [, qidSet] of ps) for (const qid of qidSet) ids.push(qid);
         for (const qid of ids) this.remove(qid);
-        return ids.length;
+        return ids;
     }
 
     /**
@@ -299,6 +349,112 @@ export class CKHexStore {
 
     get size() { return this.quads.size; }
     get dictVersion() { return this.ck.dictVersion ?? 0; }
+
+    // ──────────────────────────────────────────────────────────────────
+    // pgCK-RESPONSE §3 — web2 migration surface (import-swap from placeholder)
+    // ──────────────────────────────────────────────────────────────────
+
+    /** Distinct-subject count (number of unique subjects in the store). */
+    get subjects() { return this.spo.size; }
+
+    /**
+     * Distinct predicates and their occurrence counts.
+     * @returns {Array<{predicate: string, count: number}>}
+     */
+    predicates() {
+        const out = [];
+        for (const [pHandle, sMap] of this.pso) {
+            let count = 0;
+            for (const [, qidSet] of sMap) count += qidSet.size;
+            const predicate = this._iriFor(pHandle);
+            if (predicate) out.push({ predicate, count });
+        }
+        return out;
+    }
+
+    /**
+     * Distinct rdf:type objects (concept classes) and their occurrence counts.
+     * @returns {Array<{type: string, count: number}>}
+     */
+    classes() {
+        const pType = this._handleFor(RDF_TYPE_IRI);
+        const sMap = this.pso.get(pType);
+        if (!sMap) return [];
+        // Count instances per type (object handle).
+        const counts = new Map();   // typeHandle -> count
+        for (const [, qidSet] of sMap) {
+            for (const qid of qidSet) {
+                const q = this.quads.get(qid);
+                if (!q || typeof q.o !== 'number') continue;
+                counts.set(q.o, (counts.get(q.o) || 0) + 1);
+            }
+        }
+        const out = [];
+        for (const [tHandle, count] of counts) {
+            const type = this._iriFor(tHandle);
+            if (type) out.push({ type, count });
+        }
+        return out;
+    }
+    /** Alias per pgCK-RESPONSE §3 wording ("`classes()` (or `types()`)"). */
+    types() { return this.classes(); }
+
+    /**
+     * Insertion-ordered last n quads (inflated). Backed by a bounded ring buffer
+     * sized by `opts.recentCapacity` (default 1024). Useful for live triple feeds.
+     * @param {number} [n] — default: full buffer
+     * @returns {Array<{s,p,o,g}>}
+     */
+    recent(n) {
+        if (!this._recent) return [];
+        const cap = this._recent.length;
+        const head = this._recentHead;            // index of next-write slot
+        const filled = this._recentFilled;        // how many slots actually hold a quad
+        const total = Math.min(n ?? filled, filled);
+        const out = [];
+        // Walk from oldest to newest in insertion order
+        const start = filled < cap ? 0 : head;     // logical 0
+        for (let i = filled - total; i < filled; i++) {
+            const slot = (start + i) % cap;
+            const qid = this._recent[slot];
+            if (qid == null) continue;
+            const q = this.inflate(qid);
+            if (q) out.push(q);
+        }
+        return out;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // v1.4 — RDF/JS adapter (native DataFactory, zero deps)
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Yield an in-house DatasetCore view over the store using our native DataFactory.
+     * No external library, no CDN fetch — fully air-gapped/attested-bundle safe.
+     *
+     * The returned object satisfies the W3C RDF/JS DatasetCore interface:
+     *   - size : number
+     *   - add(quad) : Dataset
+     *   - delete(quad) : Dataset
+     *   - has(quad) : boolean
+     *   - match(s?, p?, o?, g?) : Dataset
+     *   - [Symbol.iterator]() : Iterator<Quad>
+     */
+    toRdfJs() {
+        const quads = [];
+        for (const qid of this.quads.keys()) {
+            const q = this.inflate(qid);
+            if (!q) continue;
+            const subj = DF.namedNode(q.s);
+            const pred = DF.namedNode(q.p);
+            const obj = (typeof q.o === 'object' && q.o !== null && 'v' in q.o)
+                ? DF.literal(String(q.o.v), q.o.dt ? DF.namedNode(q.o.dt) : undefined)
+                : DF.namedNode(q.o);
+            const grph = q.g ? DF.namedNode(q.g) : DF.defaultGraph();
+            quads.push(DF.quad(subj, pred, obj, grph));
+        }
+        return makeNativeDatasetCore(quads);
+    }
 
     // ──────────────────────────────────────────────────────────────────
     // v0.1 §6.6 — diagnostic events (kept for compat)
@@ -515,31 +671,7 @@ export class CKHexStore {
         if (v && !v._disposed) v._notify(addedQuadIds, removedQuadIds);
     }
 
-    // ──────────────────────────────────────────────────────────────────
-    // v0.1 §8 — RDF/JS adapter (delegates to v1.3.13 bridge if loaded)
-    // ──────────────────────────────────────────────────────────────────
-
-    async toRdfJs() {
-        const [df, dataset] = await Promise.all([
-            import('https://esm.sh/@rdfjs/data-model@2.1.0'),
-            import('https://esm.sh/@rdfjs/dataset@2.0.0'),
-        ]);
-        const DF = df.default ?? df;
-        const DS = dataset.default ?? dataset;
-        const out = DS.dataset();
-        for (const qid of this.quads.keys()) {
-            const q = this.inflate(qid);
-            if (!q) continue;
-            const subj = DF.namedNode(q.s);
-            const pred = DF.namedNode(q.p);
-            const obj  = (typeof q.o === 'object' && q.o !== null && 'v' in q.o)
-                ? DF.literal(String(q.o.v), q.o.dt ? DF.namedNode(q.o.dt) : undefined)
-                : DF.namedNode(q.o);
-            const grph = q.g ? DF.namedNode(q.g) : DF.defaultGraph();
-            out.add(DF.quad(subj, pred, obj, grph));
-        }
-        return out;
-    }
+    // (toRdfJs lives above next to the other public-API surface; this section is now Internal only.)
 
     // ──────────────────────────────────────────────────────────────────
     // Internal — handle resolution, quad insertion, index maintenance
@@ -570,10 +702,19 @@ export class CKHexStore {
         return null;
     }
 
-    _objectFrom(value) {
+    /**
+     * @param {*} value
+     * @param {boolean} [predicateIsRef] — when true, strings are NamedNode refs regardless of IRI-shape
+     *                                    (pgCK-RESPONSE §2 Q2: bare strings at whitelisted predicates).
+     */
+    _objectFrom(value, predicateIsRef = false) {
         if (value == null) return null;
         if (typeof value === 'string') {
-            return looksLikeIri(value) ? this._handleFor(value) : { v: value };
+            // pgCK-RESPONSE §2 Q2: whitelist predicates force-resolve strings as NamedNode refs.
+            // Otherwise: literal (do NOT trust IRI-shape heuristic for pgCK bare-string values).
+            // The {"@id":"…"} explicit ref shape is handled below.
+            if (predicateIsRef) return this._handleFor(value);
+            return { v: value };
         }
         if (typeof value === 'boolean') return { v: String(value), dt: this._handleFor(XSD + 'boolean') };
         if (typeof value === 'number') {
@@ -624,6 +765,13 @@ export class CKHexStore {
         addNested(this.pos, p, oKey, qid);
         addNested(this.osp, oKey, s, qid);
         addNested(this.ops, oKey, p, qid);
+
+        // pgCK-RESPONSE §3: ring-buffer push for recent(n) live triple feed.
+        if (this._recent) {
+            this._recent[this._recentHead] = qid;
+            this._recentHead = (this._recentHead + 1) % this._recent.length;
+            if (this._recentFilled < this._recent.length) this._recentFilled++;
+        }
         return qid;
     }
 
@@ -928,8 +1076,53 @@ function simplifyEdge(inflated) {
 }
 
 // ──────────────────────────────────────────────────────────────────────
+// Native DatasetCore — W3C RDF/JS spec-compliant, zero deps.
+// Returned by CKHexStore.toRdfJs(). The set is backed by an internal Map
+// keyed by a canonical quad string (NT-like) for identity dedup.
+// ──────────────────────────────────────────────────────────────────────
+
+function quadKey(q) {
+    const t = (n) => n.termType === 'Literal'
+        ? `"${n.value.replace(/"/g, '\\"')}"${n.language ? '@' + n.language : '^^<' + n.datatype.value + '>'}`
+        : (n.termType === 'BlankNode' ? '_:' + n.value : (n.termType === 'DefaultGraph' ? '' : '<' + n.value + '>'));
+    return `${t(q.subject)} ${t(q.predicate)} ${t(q.object)} ${t(q.graph)}`;
+}
+
+function matchTerm(bound, actual) {
+    if (bound == null) return true;
+    return bound.equals(actual);
+}
+
+function makeNativeDatasetCore(initialQuads = []) {
+    const store = new Map();   // quadKey → Quad
+    for (const q of initialQuads) store.set(quadKey(q), q);
+
+    const ds = {
+        get size() { return store.size; },
+        add(q) { store.set(quadKey(q), q); return ds; },
+        delete(q) { store.delete(quadKey(q)); return ds; },
+        has(q) { return store.has(quadKey(q)); },
+        match(subject, predicate, object, graph) {
+            const out = [];
+            for (const q of store.values()) {
+                if (matchTerm(subject, q.subject)
+                    && matchTerm(predicate, q.predicate)
+                    && matchTerm(object, q.object)
+                    && matchTerm(graph, q.graph)) {
+                    out.push(q);
+                }
+            }
+            return makeNativeDatasetCore(out);
+        },
+        [Symbol.iterator]() { return store.values(); },
+    };
+    return ds;
+}
+
+// ──────────────────────────────────────────────────────────────────────
 // Module exports
 // ──────────────────────────────────────────────────────────────────────
 
 if (typeof window !== 'undefined') window.CKHexStore = CKHexStore;
+export { makeNativeDatasetCore };
 export default CKHexStore;
