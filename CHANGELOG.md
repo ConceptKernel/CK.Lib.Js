@@ -39,7 +39,9 @@ Bare strings at these predicate tails always resolve to NamedNode refs:
 All other strings → literals. The IRI-shape heuristic (`https?://`, `urn:`, `ckp:`, `did:`, `tag:`) is NOT trusted for pgCK's bare-string values — only this whitelist forces NamedNode resolution. Plus the explicit `{"@id": "…"}` shape continues to be a NamedNode ref everywhere.
 
 ### Zero runtime dependencies (the through-line)
-`toRdfJs()` imports the W3C-spec DataFactory from sibling `ck-rdf-bridge.js` (also dependency-free, hand-rolled). The returned DatasetCore is a small native implementation (~30 lines, set-based identity dedup, full match/add/delete/has/iterator surface). **No `@rdfjs/*` packages anywhere. No `esm.sh` anywhere. No `import()` of any URL.** Same offline / air-gapped / attested-bundle posture as the rest of the stack.
+`toRdfJs()` imports the W3C-spec DataFactory from sibling `ck-rdf-bridge.js` (also dependency-free, hand-rolled). The returned DatasetCore is a small native implementation (~30 lines, set-based identity dedup, full match/add/delete/has/iterator surface). **No `@rdfjs/*` packages, no `esm.sh`, no `import()` of any URL — in the RDF/store layer** (`ck-rdf-bridge.js`, `ck-hex-store.js`). Those modules have an offline / air-gapped / attested-bundle posture.
+
+> **Correction (2026-06-06):** an earlier wording read *"No esm.sh anywhere … as the rest of the stack,"* which is **not accurate for the transport**: `ck-client.js` still runtime-loads `nats.ws@1.30.3` + `@msgpack/msgpack@3.0.0` from esm.sh (lines 43–44). The zero-dependency / air-gapped posture is true for the RDF/store layer only. Vendoring the transport to close the gap is tracked for v1.10. Canonical current-state: [`SPEC.CK-LIB-JS.v1.4.0.md` §2.4](./SPEC.CK-LIB-JS.v1.4.0.md).
 
 ### Package
 - `"./hex-store": "./ck-hex-store.js"` added to `package.json` exports.
