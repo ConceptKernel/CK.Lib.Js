@@ -9,3 +9,7 @@ _WIP/
 __pycache__/
 *.pyc
 *.pyo
+
+# Editor / OS cruft (never track in the public repo)
+.vscode/
+.DS_Store

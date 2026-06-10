@@ -1,7 +1,8 @@
-# CK.Lib.Js v1.4.0 OCI Bundle — Static Artifact (root layout, binary codec + display roles)
-# v1.4.0: CKHexStore lands at root (ck-hex-store.js) — native 6-way hex-indexed quad store with
-# replace-by-subject default, native DatasetCore adapter (toRdfJs), and the pgCK-RESPONSE §3
-# migration surface (size/subjects/predicates()/classes()/types()/recent(n)).
+# CK.Lib.Js v1.4.1 OCI Bundle — Static Artifact (STRIPPED: client RDF tier removed)
+# v1.4.1 (intermediary toward dispatch-only v1.5.0): the client RDF tier (ck-rdf-bridge.js + the
+# hex/RDF quad store) is removed; the legacy render tier, vendored anime, and dev scripts are retired.
+# What ships is the single NATS WSS client `ck-client.js` (Keycloak JWT auth, current verb wire) —
+# the minimal stripped surface web2 consumes. Aligned to the v3.9 "no client RDF" direction.
 # Single target: static folder mount (ckp:static designation)
 # Files land at image root so consumers can `COPY --from=cklib_source / dest/`
 # directly per SPEC.OCI.BUNDLE.v0.3 — declarable as either `static_web[]` (v0.2-compatible,
@@ -12,13 +13,12 @@
 
 FROM scratch
 
-COPY ck-*.js index.html /
-COPY vendor /vendor
+COPY ck-client.js /
 COPY README.md LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
-LABEL org.opencontainers.image.description="CKP v3.8 JavaScript client library — static folder mount artifact"
-LABEL org.opencontainers.image.version="1.4.0"
+LABEL org.opencontainers.image.description="CKP v3.8 NATS WSS client (stripped, JWT) — static folder mount artifact"
+LABEL org.opencontainers.image.version="1.4.1"
 LABEL org.opencontainers.image.source="https://github.com/ConceptKernel/CK.Lib.Js"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.designation="ckp:static"

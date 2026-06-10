@@ -1,29 +1,15 @@
 {
   "name": "@conceptkernel/cklib",
-  "version": "1.4.0",
-  "description": "CKP v3.8 JavaScript client library — NATS WSS browser agent, Envoy Gateway ready",
+  "version": "1.4.1",
+  "description": "CKP v3.8 NATS WSS client — JWT auth; stripped of client RDF (intermediary toward dispatch-only v1.5.0)",
   "type": "module",
   "main": "ck-client.js",
   "exports": {
     ".": "./ck-client.js",
-    "./client": "./ck-client.js",
-    "./page": "./ck-page.js",
-    "./bus": "./ck-bus.js",
-    "./kernel": "./ck-kernel.js",
-    "./registry": "./ck-registry.js",
-    "./runtime": "./ck-runtime.js",
-    "./materializer": "./ck-materializer.js",
-    "./store": "./ck-store.js",
-    "./shapes": "./ck-shapes.js",
-    "./anim": "./ck-anim.js",
-    "./sound": "./ck-sound.js",
-    "./rdf-bridge": "./ck-rdf-bridge.js",
-    "./hex-store": "./ck-hex-store.js"
+    "./client": "./ck-client.js"
   },
   "files": [
-    "ck-*.js",
-    "index.html",
-    "vendor/",
+    "ck-client.js",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"

@@ -2,6 +2,38 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.4.1] — Unreleased (pending built + attested OCI image)
+
+**Stripped intermediary — the "Critical Isolation Alpha" client half.** Removes the client RDF tier
+and all unused/attack surface; keeps the NATS WSS client + Keycloak **JWT auth working exactly as
+v1.4.0** (the current verb wire). `web2/` develops against this stripped client while the full
+dispatch-only **v1.5.0** lands on its own staged, pgCK-gate-aligned thread.
+
+> Unreleased — no `1.4.1` tag until a built + attested `ghcr.io/conceptkernel/ck-lib-js:1.4.1` image
+> verifies (`PROVENANCE.md`). Coordinated via NOTIFIES with **pgCK** (`intermediary-isolation-alpha-release`,
+> AGREED) + **oci-germination** (`intermediary-stripped-release`, confirmed: pipeline unchanged for the
+> smaller bundle — bundle spec is a layout-agnostic full-root merge).
+
+### Removed — client RDF tier + unused surface (archived locally to `_WIP/`, never in history)
+- **`ck-rdf-bridge.js`** (`toQuads`, `dataFactory`, `makeNativeDatasetCore`) + **`ck-hex-store.js`**
+  (the 6-way hex-indexed RDF graph mirror, `toRdfJs`, `DatasetCore`) — no client RDF/quad surface remains.
+- **`vendor/anime.esm.min.js`** (vendored 3rd-party — supply-chain) + **`scripts/`** (dev tooling).
+- **Unused render/page modules**: `ck-page`, `ck-bus`, `ck-kernel`, `ck-runtime`, `ck-registry`,
+  `ck-shapes`, `ck-anim`, `ck-anim-grammar`, `ck-sound`, `ck-materializer`, `ck-store`, `index.html`.
+- `package.json` `exports` reduced to `.` / `./client` → `ck-client.js`; `files` to `ck-client.js` + docs;
+  Dockerfile ships `ck-client.js` only.
+
+### Unchanged — "JWT as usual"
+- **`ck-client.js`** — the v1.3 NATS WSS client (Keycloak JWT login/refresh, per-verb subject grammar,
+  codec, dedup, dictionary, reconnect). No behavioural change; web2 imports `CKClient` exactly as today.
+
+### Known remaining vector (tracked)
+- `ck-client.js` runtime-loads `nats.ws` + `@msgpack/msgpack` from **esm.sh** (CDN) — needed for NATS;
+  vendoring to close the last supply-chain vector is the immediate next step (NOTIFIES.oci-germination
+  vendor+CVE thread).
+
+---
+
 ## [1.4.0] — 2026-06-05
 
 ### Added — CKHexStore at repo root (`ck-hex-store.js`)

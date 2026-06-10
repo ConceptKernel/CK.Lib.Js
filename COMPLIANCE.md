@@ -1,8 +1,20 @@
 # CK.Lib.Js Compliance & Requirements
 
-**Version:** 1.3.0  
-**Status:** v3.8 alignment (production-ready, binary codec + display roles + long-form subjects)  
-**Date:** 2026-05-28
+**Version:** 1.4.1  
+**Status:** stripped client (RDF tier removed) — v3.8 JWT/NATS transport contract  
+**Date:** 2026-06-10
+
+---
+
+> **Current state (v1.4.1 stripped) — supersedes the dated roadmap below.** CK.Lib.Js now ships a
+> **single module, `ck-client.js`** (`CKClient`): the NATS WSS transport with Keycloak JWT auth. The
+> client-side RDF tier (`CKHexStore`, quad store, `ck-rdf-bridge`) and the legacy render/page modules
+> were **removed** — no client RDF/quad/SHACL surface (aligned to the v3.9 "no pgRDF on the client"
+> direction). The OCI artifact is a **`ckp:static` `FROM scratch`** image (NOT a Node HTTP-server
+> bundle), built + attested only by `.github/workflows/oci-publish.yml` (see `PROVENANCE.md`). The
+> **transport contract below (subject families, JSON profile, pgCK governance split) remains accurate**;
+> the version table / "Dev HTTP server" / "bundle-ck-lib-js" / browser-SHACL-RDF items are historical
+> and no longer planned in this form. Forward dispatch-only surface: tracked for v1.5.0.
 
 ---
 

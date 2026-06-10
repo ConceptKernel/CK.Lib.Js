@@ -1,14 +1,19 @@
-# CK.Lib.Js — CKP v3.8 Browser Client Library
+# CK.Lib.Js — CKP NATS WSS Client (stripped)
 
-**Version:** 1.1.0  
-**Status:** Production-ready (CKP v3.8 final alignment)  
+**Version:** 1.4.1
+**Status:** stripped intermediary — client RDF tier removed; JWT/NATS transport unchanged
 **Package:** [@conceptkernel/cklib](https://www.npmjs.com/package/@conceptkernel/cklib)
 
-A JavaScript client library for Concept Kernel Protocol (CKP) v3.8, enabling browser-based agents to:
-- Connect to NATS WebSocket Secure (WSS) message bus
-- Dispatch kernel actions via Envoy Gateway routing
-- Subscribe to kernel state changes and events
-- Manage kernel ontology queries and provenance chains
+A minimal JavaScript client for the Concept Kernel Protocol (CKP). It does **one thing**: connect a
+browser to the **NATS WebSocket Secure (WSS)** message bus with **Keycloak JWT** auth, dispatch
+kernel verbs, and receive results/events. All kernel business logic (affordance resolution, identity
+verification, SHACL validation, governed writes, provenance) runs server-side in **pgCK** — the
+browser never mutates kernel state directly.
+
+> **v1.4.1 is stripped.** The former client-side RDF tier (`CKHexStore`, the quad store,
+> `ck-rdf-bridge`/`toQuads`) and the legacy render/page modules were **removed** — no client RDF,
+> no quad surface (aligned to the v3.9 "no pgRDF on the client" direction). The single shipped module
+> is **`ck-client.js`** (`CKClient`). The forward, dispatch-only surface is tracked for **v1.5.0**.
 
 ---
 
@@ -18,150 +23,54 @@ A JavaScript client library for Concept Kernel Protocol (CKP) v3.8, enabling bro
 npm install @conceptkernel/cklib
 ```
 
+Or consume the OCI static bundle (`ckp:static`): `ghcr.io/conceptkernel/ck-lib-js` — files land at
+image root for `COPY --from=cklib_source / dest/`.
+
 ## Quick Start
 
 ```javascript
-import { connect } from "nats.ws";
+import { CKClient } from "@conceptkernel/cklib";          // or "/cklib/ck-client.js" from the bundle
 
-// Connect to NATS WSS bus
-const nc = await connect({
-  servers: ["wss://stream.example.com:9222"],
-});
+const ck = new CKClient({ kernel: "pgCK.Task" });          // realm/wssEndpoint configurable
+await ck.connect();                                         // anonymous; subscribed to result + event
 
-// Subscribe to kernel state updates
-const sub = nc.subscribe("kernel.*.state");
-for await (const msg of sub) {
-  console.log("Kernel state:", msg.json());
-}
+await ck.login("user", "pass");                             // Keycloak JWT upgrade → reconnects with JWT
+ck.send({ action: "task.create", title: "…" });            // → input.kernel.pgCK.Task.action.task.create
+
+ck.on("result", (msg) => { /* { subject, headers, data, traceId, kind, subjectIri, conceptType } */ });
+ck.on("event",  (msg) => { /* codec-transparent: msg.data is decoded (JSON or MsgPack) */ });
+ck.on("status", (s)   => { /* { connection, auth } */ });
 ```
 
-## Runtime Requirements (CKP v3.8)
+## Runtime Requirements
 
-### NATS WSS Transport
+- **NATS WSS endpoint** (e.g. `wss://stream.example.com`) — native NATS with a WebSocket listener.
+- **Keycloak realm** for JWT auth (`login`/`logout`/auto-refresh; reconnects to refresh server-side ACLs).
+- **Browser:** ES2020+ (`WebSocket`, `fetch`, `Promise`, async iterators).
+- The transport loads `nats.ws` + `@msgpack/msgpack` from **esm.sh** at runtime (vendoring is tracked).
 
-CK.Lib.Js connects to a native NATS server with WebSocket Secure (WSS) listener.
-
-**Server setup:**
-```bash
-# Using Docker
-docker run -d \
-  -p 4222:4222 \
-  -p 8443:8443 \
-  -e NATS_PORT=4222 \
-  -e NATS_TLS_CERT=/etc/nats/tls/server.pem \
-  -e NATS_TLS_KEY=/etc/nats/tls/server-key.pem \
-  nats:2.14.1-scratch
+**Subject grammar** (CKP v3.8, current wire):
 ```
-
-**Client connection:**
-```javascript
-import { connect } from "nats.ws";
-
-const nc = await connect({
-  servers: ["wss://localhost:8443"],
-});
+input.kernel.<Kernel>.action.<verb>     result.kernel.<Kernel>.action.<verb>
+event.kernel.<Kernel>.<event>           event.kernel.<Kernel>.error
 ```
+Identity is the **verified JWT** (Envoy/Keycloak); the client never asserts identity — pgCK derives it.
 
-**Subject families:**
-
-Long-form (CKP v3.8 normative — canonical from v1.3.0):
-- `input.kernel.<Kernel>.action.<verb>` — inbound action dispatch
-- `result.kernel.<Kernel>.action.<verb>` — action result
-- `event.kernel.<Kernel>.<event>` — state change events
-- `event.kernel.<Kernel>.error` — per-kernel error broadcast (v1.3.0+)
-- `event.kernel.Dictionary.v_bumped` / `.snapshot` — internal dictionary sync (v1.3.0+)
-- `stream.kernel.<Kernel>.<stream>` — optional observer feeds
-- `event.CK.Compliance.violation` — global LOCKS contract violations (opt-in via `extraSubjects:`)
-- `broadcast.<project>.<channel>` — non-kernel-derived broadcasts (opt-in via `extraSubjects:`)
-
-Short-form aliases (v1.2.x compatibility, **deprecated**, removed in v2.0):
-- `input.<Kernel>`, `result.<Kernel>`, `event.<Kernel>`
-
-CKClient v1.3.0+ subscribes to BOTH forms; publishes on both `input.<Kernel>` (short) and `input.kernel.<Kernel>.action.<verb>` (long, when `data.action` is present) so callers transition transparently.
-
-### pgCK Governance Layer
-
-CK.Lib.Js is a **transport client only**. All kernel business logic runs in pgCK:
-- Affordance resolution
-- Identity verification
-- SHACL validation
-- Governed state mutation
-- Provenance tracking
-
-The browser never directly mutates kernel state; all writes go through pgCK's `ckp.seal()` governance layer.
-
-## Exported Modules
+## The single export
 
 ```javascript
-import {
-  CKClient,           // Kernel agent client
-  CKRegistry,         // Ontology registry
-  CKRuntime,          // Browser runtime environment
-  CKMaterializer,     // Kernel instantiation
-  CKPageHarness,      // Web component integration
-  CKBus,              // Event bus (NATS wrapper)
-  CKStore,            // Local state store
-  CKShapes,           // BFO shape definitions
-  CKAnim,             // Animation runtime
-  CKSound,            // Audio output
-} from "@conceptkernel/cklib";
+import { CKClient } from "@conceptkernel/cklib";   // "." and "./client" both resolve to ck-client.js
 ```
 
-## API Reference
-
-### CKClient
-
-```javascript
-const client = new CKClient({
-  natsConnection: nc,
-  kernelUrn: "urn:ckp:kernel:XrVoyage.Plugin",
-});
-
-// Dispatch kernel action
-await client.dispatch({
-  action: "kernel.action.update_state",
-  payload: { /* ... */ },
-});
-
-// Subscribe to kernel events
-client.subscribe("XrVoyage.Plugin", (event) => {
-  console.log("Event:", event);
-});
-```
-
-### CKRegistry
-
-```javascript
-const registry = new CKRegistry({ natsConnection: nc });
-
-// Query ontology
-const kernels = await registry.query({
-  rdf: "?kernel rdf:type ckp:Kernel .",
-});
-```
-
-## Versioning
-
-- **CK.Lib.Js v1.1.0** ← current stable
-- **CKP Alignment:** v3.8-final
-- **Node.js:** ≥18.0.0
-- **Browser:** ES2020+ (modern browsers)
+`CKClient` — NATS WSS agent: `connect()`, `send(data)`, `login()/logout()`, `on(event, fn)`,
+per-subject dedup (`Ck-Seq`), codec-transparent decode, dictionary sync, auto-reconnect.
 
 ## License
 
 MIT — see [LICENSE](LICENSE)
 
-## Contributing
-
-Contributions welcome. Please:
-1. Fork [github.com/ConceptKernel/CK.Lib.Js](https://github.com/ConceptKernel/CK.Lib.Js)
-2. Create feature branch
-3. Test against CKP v3.8 validator
-4. Submit PR with test coverage
-
 ## References
 
-- **CKP Specification:** https://conceptkernel.org/specs/v3.8
-- **Envoy Gateway:** https://gateway.envoyproxy.io
-- **NATS Documentation:** https://docs.nats.io
-- **npm Package:** https://www.npmjs.com/package/@conceptkernel/cklib
+- **Release provenance / verification:** [`PROVENANCE.md`](./PROVENANCE.md), [`LATEST.md`](./LATEST.md)
+- **Transport contract + per-version delta:** [`COMPLIANCE.md`](./COMPLIANCE.md), [`CHANGELOG.md`](./CHANGELOG.md)
+- **npm:** https://www.npmjs.com/package/@conceptkernel/cklib · **NATS:** https://docs.nats.io
