@@ -2,6 +2,34 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.4.2] — Unreleased
+
+**Hardening — vendored transport; no runtime CDN; air-gapped.** Closes the last supply-chain vector
+called out in v1.4.1: `ck-client.js` no longer runtime-loads `nats.ws` + `@msgpack/msgpack` from
+**esm.sh**. Both are now **vendored locally** under `vendor/` as self-contained browser ESM bundles,
+so the client has zero external runtime dependencies and runs air-gapped. No behavioural change — the
+NATS WSS + Keycloak JWT surface is byte-for-byte the v1.4.1 client; only the import source moved from
+CDN to local.
+
+> Unreleased — no `1.4.2` tag until a built + attested `ghcr.io/conceptkernel/ck-lib-js:1.4.2` image
+> verifies (`PROVENANCE.md`).
+
+### Changed — vendored NATS transport (closes the esm.sh supply-chain vector)
+- **`vendor/nats.ws.js`** — `nats.ws@1.30.3` + all transitive deps bundled to a single self-contained
+  browser ESM (esbuild `--bundle --format=esm --platform=browser --target=es2020 --minify`). Exposes
+  only the consumed named exports `{ connect, JSONCodec, headers }`. Node's built-in `crypto` is stubbed
+  empty at bundle time — its only reference is a dead `require('crypto')` PRNG fallback unreachable in
+  browsers (which use `globalThis.crypto.getRandomValues`).
+- **`vendor/msgpack.js`** — `@msgpack/msgpack@3.0.0` bundled the same way; exposes `{ encode, decode }`.
+- **`ck-client.js`** — imports rewritten from `https://esm.sh/nats.ws@1.30.3` /
+  `https://esm.sh/@msgpack/msgpack@3.0.0` to `./vendor/nats.ws.js` / `./vendor/msgpack.js`. No `esm.sh`
+  reference remains in the shipped module.
+- **`package.json`** — `version` → `1.4.2`; `vendor/` re-added to `files` (publishes with the package).
+- **`Dockerfile`** — `COPY vendor /vendor`; version label → `1.4.2`; header notes the vendored
+  no-CDN/air-gapped posture.
+
+---
+
 ## [1.4.1] — Unreleased (pending built + attested OCI image)
 
 **Stripped intermediary — the "Critical Isolation Alpha" client half.** Removes the client RDF tier
@@ -27,10 +55,10 @@ dispatch-only **v1.5.0** lands on its own staged, pgCK-gate-aligned thread.
 - **`ck-client.js`** — the v1.3 NATS WSS client (Keycloak JWT login/refresh, per-verb subject grammar,
   codec, dedup, dictionary, reconnect). No behavioural change; web2 imports `CKClient` exactly as today.
 
-### Known remaining vector (tracked)
+### Known remaining vector (tracked) — RESOLVED in 1.4.2
 - `ck-client.js` runtime-loads `nats.ws` + `@msgpack/msgpack` from **esm.sh** (CDN) — needed for NATS;
   vendoring to close the last supply-chain vector is the immediate next step (NOTIFIES.oci-germination
-  vendor+CVE thread).
+  vendor+CVE thread). **Closed in [1.4.2]** by vendoring both into `vendor/*.js` (no runtime CDN).
 
 ---
 

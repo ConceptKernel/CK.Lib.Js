@@ -1,7 +1,8 @@
 /**
  * CK Web Client — NATS WebSocket Client for Concept Kernels
  *
- * Self-contained ESM module. Loads nats.ws + @msgpack/msgpack from CDN.
+ * Self-contained ESM module. nats.ws + @msgpack/msgpack are vendored locally
+ * under ./vendor/ (no runtime CDN fetch; air-gapped / supply-chain closed, v1.4.2).
  *
  * Usage:
  *   <script type="module" src="https://lib.tech.games/ck-client.js"></script>
@@ -40,8 +41,8 @@
  *   - Reconnect on auth upgrade (login/logout/token refresh) for consistent permission ACLs.
  */
 
-import { connect, JSONCodec, headers } from "https://esm.sh/nats.ws@1.30.3";
-import { decode as msgpackDecode, encode as msgpackEncode } from "https://esm.sh/@msgpack/msgpack@3.0.0";
+import { connect, JSONCodec, headers } from "./vendor/nats.ws.js";
+import { decode as msgpackDecode, encode as msgpackEncode } from "./vendor/msgpack.js";
 const nats = { connect, JSONCodec, headers };
 
 const DEDUP_MAX_PER_SUBJECT = 1000;
