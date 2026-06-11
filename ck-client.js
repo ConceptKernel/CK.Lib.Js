@@ -5,7 +5,7 @@
  * under ./vendor/ (no runtime CDN fetch; air-gapped / supply-chain closed, v1.4.2).
  *
  * Usage:
- *   <script type="module" src="https://lib.tech.games/ck-client.js"></script>
+ *   <script type="module" src="/cklib/ck-client.js"></script>
  *   <script type="module">
  *     const ck = new CKClient({ kernel: 'TechGames.Cymatics' });
  *     await ck.connect();
@@ -25,7 +25,7 @@
  * Constructor options (v1.3.0+):
  *   kernel            — kernel name (enables auto-subscribe to result/event)
  *   wssEndpoint       — NATS WSS URL
- *   realm, clientId   — Keycloak realm + client_id (default: 'pgck' or 'techgames', 'ck-browser')
+ *   realm, clientId   — Keycloak realm + client_id (no hardcoded default — set explicitly; clientId 'ck-browser')
  *   subscribe         — ['event','result'] (default). Set ['event'] for broadcast-only roles.
  *   extraSubjects     — ['broadcast.<project>.<channel>', ...] — emits on 'broadcast' channel
  *   topicDefs         — caller-supplied topic list (advanced; overrides kernel-derived)
@@ -51,11 +51,16 @@ class CKClient {
     constructor(config = {}) {
         this.kernel = config.kernel || null;
 
+        // Endpoints derive from the page origin (same-origin /wss behind Envoy) when a browser
+        // location exists; otherwise they MUST be passed explicitly (guarded at connect/login). No
+        // hardcoded deployment default — a no-config client must never auto-target a fixed host.
+        const _loc = (typeof globalThis !== 'undefined' && globalThis.location && globalThis.location.host)
+            ? globalThis.location : null;
         this.config = {
-            wssEndpoint: config.wssEndpoint || 'wss://stream.tech.games',
+            wssEndpoint: config.wssEndpoint || (_loc ? `wss://${_loc.host}/wss` : null),
             authenticator: config.authenticator || null,
-            authEndpoint: config.authEndpoint || 'https://id.tech.games',
-            realm: config.realm || 'techgames',
+            authEndpoint: config.authEndpoint || (_loc ? `${_loc.protocol}//${_loc.host}` : null),
+            realm: config.realm || null,
             clientId: config.clientId || 'ck-browser',
             stateEndpoint: config.stateEndpoint || '/api/state',
             maxReconnectAttempts: config.maxReconnectAttempts || 10,
@@ -126,6 +131,7 @@ class CKClient {
 
     /** Connect to NATS, provision anonymous identity, auto-subscribe per channels + extraSubjects. */
     async connect() {
+        if (!this.config.wssEndpoint) throw new Error("CKClient: `wssEndpoint` is required (no browser location to derive `wss://<host>/wss`) — pass it explicitly.");
         this._setConnection('connecting');
         try {
             this._setAnonymous();
@@ -166,6 +172,7 @@ class CKClient {
 
     /** Keycloak login → upgrade anonymous to authenticated → RECONNECT with JWT (v1.3 locked). */
     async login(username, password) {
+        if (!this.config.authEndpoint || !this.config.realm) throw new Error("CKClient.login: `authEndpoint` and `realm` are required — pass them explicitly (no hardcoded default).");
         const url = `${this.config.authEndpoint}/realms/${this.config.realm}/protocol/openid-connect/token`;
         const res = await fetch(url, {
             method: 'POST',
@@ -297,8 +304,8 @@ class CKClient {
     /** Discover the kernel's declared, identity-granted affordances (degrades to [] honestly). */
     async affordances(kernelUrn) {
         try {
-            const r = await this.dispatch('kernel.affordances', kernelUrn, {});
-            return (r && (r.result || r.affordances)) || [];
+            const r = await this.dispatch('affordances', kernelUrn, {});
+            return (r && (r.affordances || r.result)) || [];
         } catch (e) { return []; }
     }
 

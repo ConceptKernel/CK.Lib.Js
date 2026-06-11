@@ -44,6 +44,43 @@ const OP_VERB = {
 
 const isUnknownAffordance = (r) => r && r.ok === false && (r.error === 'unknown_affordance' || r.error === 'unknown_verb');
 
+// pgCK ≤0.4.x replies carry no uniform `.result`; each verb returns its own field. Map them so the
+// `.result`-keyed ingest + typed reads fire. (Reply-envelope normalization is pgCK design-Q1; per-verb
+// adapters until pgCK confirms — see _WIP NOTIFIES.pgCK.v0.4.2.wire-contract-pin-operations.)
+const REPLY_FIELD = {
+  'instance.query': 'rows', 'instances.list': 'rows',
+  'kernels.list': 'kernels', 'instance.get': 'instances',
+  'instance.reach': 'reached', 'concept.match': 'candidates',
+  'instance.snapshot': 'instances',
+};
+
+/** Populate a canonical `.result` from pgCK's per-verb reply field so ingest + typed reads fire. */
+function normalizeReply(verb, reply) {
+  if (!reply || typeof reply !== 'object' || reply.result != null) return reply;
+  const field = REPLY_FIELD[verb];
+  if (field && reply[field] != null) reply.result = reply[field];
+  return reply;
+}
+
+const ONT = 'https://conceptkernel.org/ontology/v3.7/';
+/** Resolve a bare CamelCase name to its v3.7 ontology IRI; pass IRIs/CURIEs through unchanged. */
+const toIri = (name) => (typeof name === 'string' && name && !name.includes('://') && !name.includes('#') && !name.includes(':'))
+  ? ONT + name : name;
+
+/** Convert the facade filter object `{key:{op:val}}` / `{key:val}` into pgCK's `[{op,key,value}]` array (keys → IRI). */
+function toFilterArray(filter) {
+  if (Array.isArray(filter)) return filter;
+  const out = [];
+  for (const [key, cond] of Object.entries(filter || {})) {
+    if (['order_by', 'limit', 'offset'].includes(key)) continue;
+    const k = toIri(key);
+    if (cond && typeof cond === 'object' && !Array.isArray(cond)) {
+      for (const [op, value] of Object.entries(cond)) out.push({ op, key: k, value });
+    } else { out.push({ op: 'eq', key: k, value: cond }); }
+  }
+  return out;
+}
+
 /** Derive the stable write-result shape from a dispatch reply. */
 function writeResult(reply) {
   if (!reply || reply.ok === false) return { ok: false, id: reply?.id ?? null, error: reply?.error, violations: reply?.violations };
@@ -74,7 +111,7 @@ export class ConceptKernel {
   /** Invoke any affordance the kernel declares and the identity is granted. Compiles to ckp.dispatch. */
   async do(verb, payload = {}, opts = {}) {
     this._assertOpen();
-    const reply = await this._transport.dispatch(verb, this.kernelUrn, payload, opts);
+    const reply = normalizeReply(verb, await this._transport.dispatch(verb, this.kernelUrn, payload, opts));
     if (reply && reply.result != null) this._store.ingest(reply);
     return reply;
   }
@@ -84,7 +121,16 @@ export class ConceptKernel {
 
   // ── Named conveniences (sugar over `do`, mapped via OP_VERB) ────────────────
 
-  async create(type, body = {}) { return writeResult(await this.do(OP_VERB.create, { type, ...body })); }
+  async create(type, body = {}) {
+    // pgCK 0.4.x routes instance.create by payload key (`task`→task.create) reading `task.{target_kernel,title,…}`.
+    // (Payload-key routing is pgCK design-Q2; if instance.create later routes by `type`, this nesting drops.)
+    const { target_kernel, ...fields } = body;
+    const w = writeResult(await this.do(OP_VERB.create, { type, task: { target_kernel: target_kernel ?? this.name, ...fields } }));
+    // pgCK 0.4.x's create reply is a receipt (no instance body). Optimistically surface the now-sealed
+    // instance for cache-first reads; the authoritative sealed event reconciles it (replace-by-id).
+    if (w.ok && w.id) this._store.ingest({ '@id': w.id, '@type': type, ...fields });
+    return w;
+  }
   async update(id, patch = {}) { return writeResult(await this.do(OP_VERB.update, { id, ...patch })); }
   async link(source, predicate, target) { return writeResult(await this.do(OP_VERB.link, { source, predicate, target: { '@id': target } })); }
   async notify(to, predicate, body = {}) { return writeResult(await this.do(OP_VERB.link, { source: to, predicate, body, event: true })); }
@@ -119,9 +165,11 @@ export class ConceptKernel {
 
   /** `instance.query` with a closed-operator QueryShape; degrades to `list`/cache-filter pre-CI-E. */
   async query(type, filter = {}) {
-    let r = await this.do(OP_VERB.query, { type, filter });
-    if (isUnknownAffordance(r)) r = await this.do('instances.list', { type, filter }); // v3.8 legacy fallback
-    if (r && Array.isArray(r.result)) { this._store.ingest(r.result); return r.result; }
+    const payload = { type: toIri(type), filter: toFilterArray(filter) };
+    if (filter && !Array.isArray(filter)) { if (filter.limit != null) payload.limit = filter.limit; if (filter.offset != null) payload.offset = filter.offset; }
+    let r = await this.do(OP_VERB.query, payload);
+    if (isUnknownAffordance(r)) r = await this.do('instances.list', payload); // v3.8 legacy fallback
+    if (r && Array.isArray(r.result)) return r.result; // do() already ingested via the per-verb normalizer
     return this._filterCache(type, filter); // last-resort client-side filter over the cache
   }
   async list(type, filter = {}) { return this.query(type, filter); }
@@ -152,9 +200,10 @@ export class ConceptKernel {
 
   // ── Governance plane (gated on pgCK CI-D; honest stub until then — §4.6) ────
 
-  async propose(opSet) { return this._gov(OP_VERB.propose, { ops: opSet }); }
-  async vote(proposalId, choice) { return this._gov(OP_VERB.vote, { proposal: proposalId, choice }); }
-  async apply(proposalId) { return this._gov(OP_VERB.apply, { proposal: proposalId }); }
+  // Governance plane — server shapes (pgCK 0.4.x): propose {op,requires_quorum,detail}; vote {about,value}; apply {about}.
+  async propose(op, detail = {}, requires_quorum = 1) { return this._gov(OP_VERB.propose, { op, requires_quorum, detail }); }
+  async vote(proposalIri, value) { return this._gov(OP_VERB.vote, { about: proposalIri, value }); }
+  async apply(proposalIri) { return this._gov(OP_VERB.apply, { about: proposalIri }); }
   async _gov(verb, payload) {
     const r = await this.do(verb, payload);
     if (isUnknownAffordance(r)) return { ok: false, error: 'gov_plane_unavailable' };
