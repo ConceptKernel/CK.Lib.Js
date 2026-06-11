@@ -4,8 +4,11 @@ All notable changes to CK.Lib.Js are documented here.
 
 ## [1.5.0] — 2026-06-11
 
-> **Tagged 2026-06-11.** CI build → SLSA attest → byte-verify in progress; this entry's TERMINAL status
-> (attested-success / disclosed-fail) is recorded here on settle — **no next tag until then** (PROVENANCE Rule 3/4).
+> **✅ RELEASED 2026-06-11 — attested-success.** CI run `27374736960` → `ghcr.io/conceptkernel/ck-lib-js:1.5.0`
+> @ `sha256:195c20713314653b5a6f0078be5783520754ba7010f457c87ad2da66d771117d`; `gh attestation verify` ✓;
+> `LATEST.md` advanced; GitHub Release live. **Byte-verified:** bundle = exactly `ck.js` + `ck-client.js` +
+> `ck-store.js` + `vendor/{nats.ws,msgpack}.js` + README/LICENSE (no `index.html`/`ck-page` — the legacy
+> console is gone). Terminal status logged; the next tag is unblocked (PROVENANCE Rule 3/4).
 
 **Dispatch-only concept-kernel surface — aligned to CKP v3.9 Critical Isolation.** The client becomes
 dispatch-only: it authenticates and dispatches typed payloads, and nothing else crosses. There is **no
