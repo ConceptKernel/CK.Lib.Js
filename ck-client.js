@@ -75,7 +75,7 @@ class CKClient {
             input:           `input.${this.kernel}`,                                  // short publish
             inputLongPrefix: `input.kernel.${this.kernel}.action.`,                   // long publish (append verb)
             result:          `result.${this.kernel}`,                                 // short subscribe
-            resultLong:      `result.kernel.${this.kernel}.action.>`,                 // long subscribe wildcard
+            resultLong:      `result.kernel.${this.kernel}.>`,                        // long subscribe wildcard (grammar-agnostic: catches result.kernel.<K>.<verb> AND .action.<verb>; Trace-Id correlates — mirrors eventLong breadth)
             event:           `event.${this.kernel}`,                                  // short subscribe
             eventLong:       `event.kernel.${this.kernel}.>`,                         // long subscribe wildcard
             error:           `event.kernel.${this.kernel}.error`,                     // per-kernel error (v1.3)
@@ -87,7 +87,7 @@ class CKClient {
             { name: `input.${this.kernel}`,                       dir: 'pub', access: 'anon' },
             { name: `input.kernel.${this.kernel}.action.>`,       dir: 'pub', access: 'anon' },
             { name: `result.${this.kernel}`,                      dir: 'sub', access: 'anon' },
-            { name: `result.kernel.${this.kernel}.action.>`,      dir: 'sub', access: 'anon' },
+            { name: `result.kernel.${this.kernel}.>`,             dir: 'sub', access: 'anon' },
             { name: `event.${this.kernel}`,                       dir: 'sub', access: 'anon' },
             { name: `event.kernel.${this.kernel}.>`,              dir: 'sub', access: 'anon' },
             { name: `admin.${this.kernel}`,                       dir: 'pub', access: 'auth' },
