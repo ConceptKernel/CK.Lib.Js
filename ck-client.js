@@ -1,10 +1,11 @@
 /**
  * CK Web Client — NATS WebSocket Client for Concept Kernels
  *
- * Self-contained ESM module. Loads nats.ws + @msgpack/msgpack from CDN.
+ * Self-contained ESM module. nats.ws + @msgpack/msgpack are vendored locally
+ * under ./vendor/ (no runtime CDN fetch; air-gapped / supply-chain closed, v1.4.2).
  *
  * Usage:
- *   <script type="module" src="https://lib.tech.games/ck-client.js"></script>
+ *   <script type="module" src="/cklib/ck-client.js"></script>
  *   <script type="module">
  *     const ck = new CKClient({ kernel: 'TechGames.Cymatics' });
  *     await ck.connect();
@@ -24,7 +25,7 @@
  * Constructor options (v1.3.0+):
  *   kernel            — kernel name (enables auto-subscribe to result/event)
  *   wssEndpoint       — NATS WSS URL
- *   realm, clientId   — Keycloak realm + client_id (default: 'pgck' or 'techgames', 'ck-browser')
+ *   realm, clientId   — Keycloak realm + client_id (no hardcoded default — set explicitly; clientId 'ck-browser')
  *   subscribe         — ['event','result'] (default). Set ['event'] for broadcast-only roles.
  *   extraSubjects     — ['broadcast.<project>.<channel>', ...] — emits on 'broadcast' channel
  *   topicDefs         — caller-supplied topic list (advanced; overrides kernel-derived)
@@ -40,8 +41,8 @@
  *   - Reconnect on auth upgrade (login/logout/token refresh) for consistent permission ACLs.
  */
 
-import { connect, JSONCodec, headers } from "https://esm.sh/nats.ws@1.30.3";
-import { decode as msgpackDecode, encode as msgpackEncode } from "https://esm.sh/@msgpack/msgpack@3.0.0";
+import { connect, JSONCodec, headers } from "./vendor/nats.ws.js";
+import { decode as msgpackDecode, encode as msgpackEncode } from "./vendor/msgpack.js";
 const nats = { connect, JSONCodec, headers };
 
 const DEDUP_MAX_PER_SUBJECT = 1000;
@@ -50,11 +51,16 @@ class CKClient {
     constructor(config = {}) {
         this.kernel = config.kernel || null;
 
+        // Endpoints derive from the page origin (same-origin /wss behind Envoy) when a browser
+        // location exists; otherwise they MUST be passed explicitly (guarded at connect/login). No
+        // hardcoded deployment default — a no-config client must never auto-target a fixed host.
+        const _loc = (typeof globalThis !== 'undefined' && globalThis.location && globalThis.location.host)
+            ? globalThis.location : null;
         this.config = {
-            wssEndpoint: config.wssEndpoint || 'wss://stream.tech.games',
+            wssEndpoint: config.wssEndpoint || (_loc ? `wss://${_loc.host}/wss` : null),
             authenticator: config.authenticator || null,
-            authEndpoint: config.authEndpoint || 'https://id.tech.games',
-            realm: config.realm || 'techgames',
+            authEndpoint: config.authEndpoint || (_loc ? `${_loc.protocol}//${_loc.host}` : null),
+            realm: config.realm || null,
             clientId: config.clientId || 'ck-browser',
             stateEndpoint: config.stateEndpoint || '/api/state',
             maxReconnectAttempts: config.maxReconnectAttempts || 10,
@@ -74,7 +80,7 @@ class CKClient {
             input:           `input.${this.kernel}`,                                  // short publish
             inputLongPrefix: `input.kernel.${this.kernel}.action.`,                   // long publish (append verb)
             result:          `result.${this.kernel}`,                                 // short subscribe
-            resultLong:      `result.kernel.${this.kernel}.action.>`,                 // long subscribe wildcard
+            resultLong:      `result.kernel.${this.kernel}.>`,                        // long subscribe wildcard (grammar-agnostic: catches result.kernel.<K>.<verb> AND .action.<verb>; Trace-Id correlates — mirrors eventLong breadth)
             event:           `event.${this.kernel}`,                                  // short subscribe
             eventLong:       `event.kernel.${this.kernel}.>`,                         // long subscribe wildcard
             error:           `event.kernel.${this.kernel}.error`,                     // per-kernel error (v1.3)
@@ -86,7 +92,7 @@ class CKClient {
             { name: `input.${this.kernel}`,                       dir: 'pub', access: 'anon' },
             { name: `input.kernel.${this.kernel}.action.>`,       dir: 'pub', access: 'anon' },
             { name: `result.${this.kernel}`,                      dir: 'sub', access: 'anon' },
-            { name: `result.kernel.${this.kernel}.action.>`,      dir: 'sub', access: 'anon' },
+            { name: `result.kernel.${this.kernel}.>`,             dir: 'sub', access: 'anon' },
             { name: `event.${this.kernel}`,                       dir: 'sub', access: 'anon' },
             { name: `event.kernel.${this.kernel}.>`,              dir: 'sub', access: 'anon' },
             { name: `admin.${this.kernel}`,                       dir: 'pub', access: 'auth' },
@@ -112,12 +118,20 @@ class CKClient {
         this._handlers = {
             result: [], event: [], status: [], error: [], broadcast: [],
         };
+
+        // v1.5.0 dispatch-transport state (additive over the v1.3 NATS client).
+        this._pending = new Map();          // traceId → { resolve, reject, timer } (request/reply correlation)
+        this._scopeListeners = new Set();   // fn(instance|reply) — granted-scope delivery for subscribe()
+        this._dispatchMode = config.dispatchMode || 'v3.8';      // v3.8 subject-grammar shim until pgCK CI-B
+        this._dispatchIngress = config.dispatchIngress || 'ckp.dispatch';
+        this._dispatchTimeout = config.dispatchTimeout || 15000;
     }
 
     // ── Public API ───────────────────────────────────────────────────────
 
     /** Connect to NATS, provision anonymous identity, auto-subscribe per channels + extraSubjects. */
     async connect() {
+        if (!this.config.wssEndpoint) throw new Error("CKClient: `wssEndpoint` is required (no browser location to derive `wss://<host>/wss`) — pass it explicitly.");
         this._setConnection('connecting');
         try {
             this._setAnonymous();
@@ -158,6 +172,7 @@ class CKClient {
 
     /** Keycloak login → upgrade anonymous to authenticated → RECONNECT with JWT (v1.3 locked). */
     async login(username, password) {
+        if (!this.config.authEndpoint || !this.config.realm) throw new Error("CKClient.login: `authEndpoint` and `realm` are required — pass them explicitly (no hardcoded default).");
         const url = `${this.config.authEndpoint}/realms/${this.config.realm}/protocol/openid-connect/token`;
         const res = await fetch(url, {
             method: 'POST',
@@ -191,6 +206,9 @@ class CKClient {
     async disconnect() {
         for (const s of this._subs) { try { s.unsubscribe(); } catch (e) {} }
         this._subs = [];
+        for (const [, p] of this._pending) clearTimeout(p.timer);
+        this._pending.clear();
+        this._scopeListeners.clear();
         if (this.nc) { await this.nc.drain(); this.nc = null; }
         this._setConnection('disconnected');
     }
@@ -225,6 +243,74 @@ class CKClient {
         const a = this._handlers[event];
         if (a) { const i = a.indexOf(fn); if (i > -1) a.splice(i, 1); }
     }
+
+    // ── v1.5.0 dispatch-transport surface (the L0 interface the ck.js facade composes) ──
+
+    /**
+     * The single outbound primitive: carry the four-tuple ⟨verb, kernel_urn, payload, identity⟩ to
+     * pgCK and await the typed reply. Identity is the verified JWT the connection already carries — the
+     * client never asserts it. Against a pre-CI-B pgCK the transitional `v3.8` shim maps the verb to its
+     * per-verb subject; switch `dispatchMode:'v3.9'` once pgCK presents `ckp.dispatch` natively.
+     */
+    async dispatch(verb, kernelUrn, payload = {}, opts = {}) {
+        if (!this.nc) throw new Error('Not connected');
+        await this._maybeRefreshToken();
+        const traceId = this._traceId();
+        const h = this._headers(traceId);
+        h.set('Ck-Verb', String(verb));
+        if (kernelUrn) h.set('Ck-Kernel', String(kernelUrn));
+        const jc = nats.JSONCodec();
+
+        let subject, body;
+        if (this._dispatchMode === 'v3.9') {
+            subject = this._dispatchIngress;                   // ckp.dispatch closed ingress
+            body = { verb, kernel_urn: kernelUrn, payload };   // identity is server-derived (TR-02)
+        } else {
+            const name = (kernelUrn || '').replace('ckp://Kernel#', '') || this.kernel;
+            subject = `input.kernel.${name}.action.${verb}`;   // v3.8 subject-grammar shim (removed at CI-B)
+            body = { action: verb, ...payload };
+        }
+
+        return new Promise((resolve, reject) => {
+            const timeout = opts.timeout || this._dispatchTimeout;
+            const timer = setTimeout(() => {
+                this._pending.delete(traceId);
+                reject(new Error(`dispatch('${verb}') timed out after ${timeout}ms`));
+            }, timeout);
+            this._pending.set(traceId, { resolve, reject, timer });
+            try {
+                this.nc.publish(subject, jc.encode({ timestamp: new Date().toISOString(), ...body }), { headers: h });
+            } catch (e) {
+                clearTimeout(timer); this._pending.delete(traceId); reject(e);
+            }
+        });
+    }
+
+    _resolvePending(traceId, reply) {
+        const p = this._pending.get(traceId);
+        if (!p) return;
+        clearTimeout(p.timer);
+        this._pending.delete(traceId);
+        p.resolve(reply);
+    }
+
+    /** Subscribe the kernel's granted result/event scope; each granted message → onMsg(instance|reply). */
+    subscribe(kernelUrn, onMsg) {
+        if (typeof onMsg !== 'function') return () => {};
+        this._scopeListeners.add(onMsg);
+        return () => this._scopeListeners.delete(onMsg);
+    }
+
+    /** Discover the kernel's declared, identity-granted affordances (degrades to [] honestly). */
+    async affordances(kernelUrn) {
+        try {
+            const r = await this.dispatch('affordances', kernelUrn, {});
+            return (r && (r.affordances || r.result)) || [];
+        } catch (e) { return []; }
+    }
+
+    /** Transport close — alias for disconnect (the facade calls close()). */
+    async close() { return this.disconnect(); }
 
     /** v1.3 — lookup dictionary handle for an IRI (returns null if unknown). */
     handleForIri(iri) { return this._dict.reverse.get(iri) ?? null; }
@@ -327,6 +413,12 @@ class CKClient {
                     // Additive fields; existing consumers reading only {subject,headers,data,traceId} unaffected.
                     const { kind, subjectIri, conceptType, kernel, verb } =
                         this._deriveEnvelope(eventName, msg.subject, data);
+
+                    // v1.5.0 — resolve a pending dispatch by Trace-Id; deliver granted-scope to subscribe() listeners.
+                    if (eventName === 'result' && traceId && this._pending.has(traceId)) this._resolvePending(traceId, data);
+                    if (eventName === 'result' || eventName === 'event') {
+                        for (const fn of this._scopeListeners) { try { fn(data); } catch (e) {} }
+                    }
 
                     this._emit(eventName, {
                         subject: msg.subject, headers: hdrs, data, traceId,

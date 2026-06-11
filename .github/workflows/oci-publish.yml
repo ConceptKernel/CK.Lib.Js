@@ -19,9 +19,11 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      # Checkout the PUSHED TAG (default ref) — NEVER a fixed branch. Building `ref: main`
+      # while releases are tagged on task branches shipped stale v1.4.0 bytes as :1.4.1/:1.4.2
+      # (the 2026-06-11 packaging-integrity incident; see CHANGELOG [1.4.3]).
       - uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 0
 
       - uses: docker/setup-buildx-action@v3
@@ -52,7 +54,7 @@ jobs:
           # Labels per SPEC.OCI.BUNDLE.v0.3 §2.1 (Shape A manifest labels — Required + Recommended set).
           labels: |
             org.opencontainers.image.title=CK.Lib.Js
-            org.opencontainers.image.description=CKP v3.8 JavaScript client library — static folder mount
+            org.opencontainers.image.description=CKP NATS WSS client (stripped, JWT) — static folder mount
             org.opencontainers.image.version=${{ steps.v.outputs.version }}
             org.opencontainers.image.source=https://github.com/ConceptKernel/CK.Lib.Js
             org.opencontainers.image.revision=${{ github.sha }}
@@ -107,13 +109,13 @@ jobs:
           cat > LATEST.md <<EOF
           # CK.Lib.Js — latest published artifacts
 
-          One publishable surface ships from this repo: the **OCI static bundle** (\`ckp:static\` designation) — a CKP v3.8 JavaScript client library shipped as a Shape A filesystem-layer OCI image per [SPEC.OCI.BUNDLE.v0.3](https://github.com/sporaxis-com/oci-germination/blob/main/SPEC.OCI.BUNDLE.v0.3.md). The npm package \`@conceptkernel/cklib\` is staged in \`package.json\` but not yet released. See [Repo packages view](https://github.com/${REPO}/pkgs/container/ck-lib-js) for the full version history.
+          One publishable surface ships from this repo: the **OCI static bundle** (\`ckp:static\` designation) — the CKP **concept-kernel JS client (dispatch-only)** shipped as a Shape A filesystem-layer OCI image per [SPEC.OCI.BUNDLE.v0.4](https://github.com/sporaxis-com/oci-germination/blob/main/SPEC.OCI.BUNDLE.v0.4.md). The npm package \`@conceptkernel/cklib\` is staged in \`package.json\` but not yet released. See [Repo packages view](https://github.com/${REPO}/pkgs/container/ck-lib-js) for the full version history.
 
           ## CK.Lib.Js OCI bundle — \`${TAG}\`
 
           Per [\`PROVENANCE.md\`](./PROVENANCE.md), every digest below verifies under \`gh attestation verify oci://… --repo ${REPO}\`. Versions before v1.3.9 predate the attestation wiring and never appear here — re-publishing them would change digests and break the immutability promise.
 
-          \`docker pull ghcr.io/conceptkernel/ck-lib-js:${VER}\` → declare as a \`static_web\` (routed) or \`layer_sources\` (additive merge) entry in your \`bundle.yaml\` per SPEC.OCI.BUNDLE.v0.3. Files land at image root (\`/ck-client.js\`, \`/ck-page.js\`, \`/vendor/\`) ready for spec-standard \`COPY --from=cklib_source / dest/\`.
+          \`docker pull ghcr.io/conceptkernel/ck-lib-js:${VER}\` → declare as a \`static_web\` (routed) or \`layer_sources\` (additive merge) entry in your \`bundle.yaml\` per SPEC.OCI.BUNDLE.v0.4. The bundle lands the facade + transport + cache at image root (\`/ck.js\`, \`/ck-client.js\`, \`/ck-store.js\`, \`/vendor/\`) ready for spec-standard \`COPY --from=cklib_source / dest/\`.
 
           | arch  | Pull URI                                | Also tagged | Digest                                                                  | Created (UTC)       |
           |-------|-----------------------------------------|-------------|-------------------------------------------------------------------------|---------------------|
@@ -170,8 +172,9 @@ jobs:
 
           \`\`\`html
           <script type="module">
-            import { CKPage } from '/cklib/ck-page.js';
-            await CKPage.init();
+            import { CKClient } from '/cklib/ck-client.js';
+            const ck = new CKClient({ kernel: 'pgCK.Task' });
+            await ck.connect();
           </script>
           \`\`\`
 
@@ -182,7 +185,7 @@ jobs:
           - The OCI bundle is anonymous public pull — no GHCR auth required.
           - Per [\`PROVENANCE.md\`](./PROVENANCE.md) Rule 2: do not consider an artifact "shipped" if its digest does not verify under \`gh attestation verify\`.
 
-          See [\`CHANGELOG.md\`](./CHANGELOG.md) for what changed per version, [\`COMPLIANCE.md\`](./COMPLIANCE.md) for the v3.8 transport contract, [\`README.md\`](./README.md) for the full ESM export surface.
+          See [\`CHANGELOG.md\`](./CHANGELOG.md) for what changed per version, [\`COMPLIANCE.md\`](./COMPLIANCE.md) for the transport contract, [\`README.md\`](./README.md) for the \`CK\` concept-kernel API.
 
           ---
 
@@ -200,10 +203,16 @@ jobs:
             || echo "Release already exists, skipping"
 
       - name: Commit LATEST.md to main
+        # The working tree is the TAG checkout; LATEST.md lives on main. Stash the render,
+        # switch to origin/main explicitly, and commit there — never push the tag's tree to main.
         run: |
           set -euo pipefail
+          cp LATEST.md "${RUNNER_TEMP}/LATEST.md"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -f -B publish-latest origin/main
+          cp "${RUNNER_TEMP}/LATEST.md" LATEST.md
           if [ -n "$(git status --porcelain LATEST.md)" ]; then
             git add LATEST.md
             git commit -m "docs: LATEST.md → ${GITHUB_REF_NAME} (auto, attestation-gated)"

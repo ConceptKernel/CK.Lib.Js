@@ -1,35 +1,26 @@
 {
   "name": "@conceptkernel/cklib",
-  "version": "1.4.0",
-  "description": "CKP v3.8 JavaScript client library — NATS WSS browser agent, Envoy Gateway ready",
+  "version": "1.5.0",
+  "description": "Attach JS hosts, tools and agents to a Concept Kernel — governed verbs, sealed provenance, typed reads over NATS-WSS + JWT (CKP v3.9 dispatch-only; vendored, air-gapped)",
   "type": "module",
-  "main": "ck-client.js",
+  "main": "ck.js",
   "exports": {
-    ".": "./ck-client.js",
-    "./client": "./ck-client.js",
-    "./page": "./ck-page.js",
-    "./bus": "./ck-bus.js",
-    "./kernel": "./ck-kernel.js",
-    "./registry": "./ck-registry.js",
-    "./runtime": "./ck-runtime.js",
-    "./materializer": "./ck-materializer.js",
-    "./store": "./ck-store.js",
-    "./shapes": "./ck-shapes.js",
-    "./anim": "./ck-anim.js",
-    "./sound": "./ck-sound.js",
-    "./rdf-bridge": "./ck-rdf-bridge.js",
-    "./hex-store": "./ck-hex-store.js"
+    ".": "./ck.js",
+    "./internal/client": "./ck-client.js",
+    "./internal/store": "./ck-store.js",
+    "./client": "./ck-client.js"
   },
   "files": [
-    "ck-*.js",
-    "index.html",
+    "ck.js",
+    "ck-client.js",
+    "ck-store.js",
     "vendor/",
     "README.md",
     "LICENSE",
     "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "echo \"Tests: see TODO.md for test plan\""
+    "test": "node --check ck.js && node --check ck-client.js && node --check ck-store.js"
   },
   "repository": {
     "type": "git",
@@ -38,23 +29,26 @@
   "keywords": [
     "conceptkernel",
     "ckp",
+    "concept-kernel",
+    "knowledge-graph",
+    "semantic",
+    "governance",
+    "provenance",
+    "agents",
+    "dispatch",
     "nats",
     "websocket",
     "kernel",
     "ontology",
     "bfo",
     "prov-o",
-    "event-driven",
-    "web-components"
+    "event-driven"
   ],
   "author": "Peter Styk <peter@styk.tv>",
   "license": "MIT",
   "homepage": "https://conceptkernel.org",
   "bugs": {
     "url": "https://github.com/ConceptKernel/CK.Lib.Js/issues"
-  },
-  "dependencies": {
-    "nats.ws": "^1.30.3"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -1,0 +1,303 @@
+// ck.js — CK.Lib.Js L2: the unified, dispatch-backed concept-kernel surface (v1.5.0).
+//
+// One import an app or LLM-agent harness needs:  import { CK } from '@conceptkernel/cklib';
+// `await CK.activate('<kernel>')` brings a concept kernel to life (authenticate + subscribe granted
+// scope); every operation on the returned `ConceptKernel` handle resolves to a single outbound
+// primitive — `ckp.dispatch(verb, kernel_urn, payload, identity)` (SPEC.CK-LIB-JS.v1.5.0 §4).
+//
+// App code names concept kernels and concepts (URNs) — never NATS subjects, codecs, handles,
+// trace ids, quads, graph ids, or query strings. The machinery underneath is exactly two layers:
+//   L0 — a dispatch transport (CKClient; carries the four-tuple to the single ingress)
+//   L1 — a typed-instance cache (CKStore; this file imports it)
+// There is no RDF, quad store, or query engine on the client.
+
+import CKStore from './ck-store.js';
+
+/** Normalize a kernel name or URN to the canonical `ckp://Kernel#<Name>` form. */
+export function normalizeKernel(kernel) {
+  if (typeof kernel !== 'string' || !kernel.length) throw new Error('CK.activate: kernel name or URN required');
+  if (kernel.startsWith('ckp://Kernel#')) return kernel;
+  if (kernel.startsWith('ckp://')) return kernel;
+  return 'ckp://Kernel#' + kernel;
+}
+
+// The explicit operation→verb table — the stable floor mapped to v3.9 verbs (never by parsing an
+// action-URN). Legacy v3.8 aliases are handled below L2 by the transport shim, not here.
+const OP_VERB = {
+  create: 'instance.create',
+  update: 'instance.update',
+  transition: 'instance.transition',
+  link: 'instance.link',
+  list: 'instance.query',
+  query: 'instance.query',
+  get: 'instance.get',
+  reach: 'instance.reach',
+  verify: 'instance.verify',
+  provenance: 'instance.provenance',
+  snapshot: 'instance.snapshot',
+  validate: 'instance.validate',
+  retire: 'instance.retire',
+  propose: 'kernel.propose_change',
+  vote: 'kernel.vote',
+  apply: 'kernel.apply',
+};
+
+const isUnknownAffordance = (r) => r && r.ok === false && (r.error === 'unknown_affordance' || r.error === 'unknown_verb');
+
+// pgCK ≤0.4.x replies carry no uniform `.result`; each verb returns its own field. Map them so the
+// `.result`-keyed ingest + typed reads fire. (Reply-envelope normalization is pgCK design-Q1; per-verb
+// adapters until pgCK confirms — see _WIP NOTIFIES.pgCK.v0.4.2.wire-contract-pin-operations.)
+const REPLY_FIELD = {
+  'instance.query': 'rows', 'instances.list': 'rows',
+  'kernels.list': 'kernels', 'instance.get': 'instances',
+  'instance.reach': 'reached', 'concept.match': 'candidates',
+  'instance.snapshot': 'instances',
+};
+
+/** Populate a canonical `.result` from pgCK's per-verb reply field so ingest + typed reads fire. */
+function normalizeReply(verb, reply) {
+  if (!reply || typeof reply !== 'object' || reply.result != null) return reply;
+  const field = REPLY_FIELD[verb];
+  if (field && reply[field] != null) reply.result = reply[field];
+  return reply;
+}
+
+const ONT = 'https://conceptkernel.org/ontology/v3.7/';
+/** Resolve a bare CamelCase name to its v3.7 ontology IRI; pass IRIs/CURIEs through unchanged. */
+const toIri = (name) => (typeof name === 'string' && name && !name.includes('://') && !name.includes('#') && !name.includes(':'))
+  ? ONT + name : name;
+
+/** Convert the facade filter object `{key:{op:val}}` / `{key:val}` into pgCK's `[{op,key,value}]` array (keys → IRI). */
+function toFilterArray(filter) {
+  if (Array.isArray(filter)) return filter;
+  const out = [];
+  for (const [key, cond] of Object.entries(filter || {})) {
+    if (['order_by', 'limit', 'offset'].includes(key)) continue;
+    const k = toIri(key);
+    if (cond && typeof cond === 'object' && !Array.isArray(cond)) {
+      for (const [op, value] of Object.entries(cond)) out.push({ op, key: k, value });
+    } else { out.push({ op: 'eq', key: k, value: cond }); }
+  }
+  return out;
+}
+
+/** Derive the stable write-result shape from a dispatch reply. */
+function writeResult(reply) {
+  if (!reply || reply.ok === false) return { ok: false, id: reply?.id ?? null, error: reply?.error, violations: reply?.violations };
+  return { ok: true, id: reply.id ?? reply.result?.['@id'] ?? null, verified: reply.verified ?? !!reply.proof_digest, proof_digest: reply.proof_digest ?? null, seq: reply.seq };
+}
+
+/**
+ * ConceptKernel — the live handle returned by `CK.activate`. Affordance-projected (what `do` may
+ * invoke and what `activate` subscribed = the kernel's affordance rows ∩ the verified identity's
+ * grants). The handle is NOT the authorization boundary; pgCK is (SPEC §4.10).
+ */
+export class ConceptKernel {
+  constructor(kernelUrn, transport, store, affordances = [], opts = {}) {
+    this.kernelUrn = kernelUrn;
+    this.name = kernelUrn.replace('ckp://Kernel#', '');
+    this._transport = transport;
+    this._store = store;
+    this._affordances = affordances;
+    this._opts = opts;
+    this._closed = false;
+    this._unsubs = [];
+  }
+
+  _assertOpen() { if (this._closed) throw new Error(`ConceptKernel ${this.name} is closed`); }
+
+  // ── The open affordance surface ────────────────────────────────────────────
+
+  /** Invoke any affordance the kernel declares and the identity is granted. Compiles to ckp.dispatch. */
+  async do(verb, payload = {}, opts = {}) {
+    this._assertOpen();
+    const reply = normalizeReply(verb, await this._transport.dispatch(verb, this.kernelUrn, payload, opts));
+    if (reply && reply.result != null) this._store.ingest(reply);
+    return reply;
+  }
+
+  /** The kernel's declared, identity-granted affordance descriptors (sourced from sealed rows). */
+  affordances() { return this._affordances.slice(); }
+
+  // ── Named conveniences (sugar over `do`, mapped via OP_VERB) ────────────────
+
+  async create(type, body = {}) {
+    // pgCK 0.4.x routes instance.create by payload key (`task`→task.create) reading `task.{target_kernel,title,…}`.
+    // (Payload-key routing is pgCK design-Q2; if instance.create later routes by `type`, this nesting drops.)
+    const { target_kernel, ...fields } = body;
+    const w = writeResult(await this.do(OP_VERB.create, { type, task: { target_kernel: target_kernel ?? this.name, ...fields } }));
+    // pgCK 0.4.x's create reply is a receipt (no instance body). Optimistically surface the now-sealed
+    // instance for cache-first reads; the authoritative sealed event reconciles it (replace-by-id).
+    if (w.ok && w.id) this._store.ingest({ '@id': w.id, '@type': type, ...fields });
+    return w;
+  }
+  async update(id, patch = {}) { return writeResult(await this.do(OP_VERB.update, { id, ...patch })); }
+  async link(source, predicate, target) { return writeResult(await this.do(OP_VERB.link, { source, predicate, target: { '@id': target } })); }
+  async notify(to, predicate, body = {}) { return writeResult(await this.do(OP_VERB.link, { source: to, predicate, body, event: true })); }
+  async retire(id, reason) { return writeResult(await this.do(OP_VERB.retire, { id, reason })); }
+  async verify(id) { const r = await this.do(OP_VERB.verify, { id }); return { verified: r?.verified ?? !!r?.proof_digest, proof_digest: r?.proof_digest ?? null, seq: r?.seq }; }
+  async provenance(id, depth) { const r = await this.do(OP_VERB.provenance, { id, depth }); return r?.result ?? r; }
+  async snapshot(scope) { const r = await this.do(OP_VERB.snapshot, scope ? { scope } : {}); return r?.result ?? []; }
+
+  /** Gated: rides `instance.update {lifecycle_state}` until pgCK CI-E-3 ships the server-side gate. */
+  async transition(id, toState, evidence) {
+    const r = await this.do(OP_VERB.transition, { id, to_state: toState, evidence });
+    if (isUnknownAffordance(r)) return writeResult(await this.do(OP_VERB.update, { id, lifecycle_state: toState }));
+    return writeResult(r);
+  }
+
+  /** Validate a body before a write. Boolean-grade until pgCK CI-B-3 plumbs the ValidationReport. */
+  async validate(body) {
+    const r = await this.do(OP_VERB.validate, { body });
+    if (r && r.ok === false && !r.violations) return { conforms: false };
+    return { conforms: r?.conforms ?? (r?.ok !== false), violations: r?.violations };
+  }
+
+  // ── Reads without a query language (named, typed, grantable — §4.5) ─────────
+
+  /** Cache-first; dispatch `instance.get` on miss; ingest + return the typed instance. */
+  async get(id) {
+    const cached = this._store.get(id);
+    if (cached) return cached;
+    const r = await this.do(OP_VERB.get, { id });
+    return this._store.get(id) ?? r?.result ?? null;
+  }
+
+  /** `instance.query` with a closed-operator QueryShape; degrades to `list`/cache-filter pre-CI-E. */
+  async query(type, filter = {}) {
+    const payload = { type: toIri(type), filter: toFilterArray(filter) };
+    if (filter && !Array.isArray(filter)) { if (filter.limit != null) payload.limit = filter.limit; if (filter.offset != null) payload.offset = filter.offset; }
+    let r = await this.do(OP_VERB.query, payload);
+    if (isUnknownAffordance(r)) r = await this.do('instances.list', payload); // v3.8 legacy fallback
+    if (r && Array.isArray(r.result)) return r.result; // do() already ingested via the per-verb normalizer
+    return this._filterCache(type, filter); // last-resort client-side filter over the cache
+  }
+  async list(type, filter = {}) { return this.query(type, filter); }
+
+  /** Bounded traversal. Gated on pgCK CI-E-4; returns [] honestly if unavailable. */
+  async reach(from, via, opts = {}) {
+    const r = await this.do(OP_VERB.reach, { from, via, ...opts });
+    if (isUnknownAffordance(r)) return [];
+    if (r && Array.isArray(r.result)) { this._store.ingest(r.result); return r.result; }
+    return [];
+  }
+
+  _filterCache(type, filter) {
+    const OPS = {
+      eq: (a, b) => a === b, neq: (a, b) => a !== b,
+      lt: (a, b) => a < b, lte: (a, b) => a <= b, gt: (a, b) => a > b, gte: (a, b) => a >= b,
+      contains: (a, b) => typeof a === 'string' && a.includes(b), in: (a, b) => Array.isArray(b) && b.includes(a),
+    };
+    return this._store.all().filter((inst) => {
+      if (type && (inst['@type'] ?? inst.type) !== type) return false;
+      return Object.entries(filter).every(([key, cond]) => {
+        if (['order_by', 'limit', 'offset'].includes(key)) return true;
+        if (cond && typeof cond === 'object') return Object.entries(cond).every(([op, val]) => (OPS[op] ? OPS[op](inst[key], val) : true));
+        return inst[key] === cond;
+      });
+    });
+  }
+
+  // ── Governance plane (gated on pgCK CI-D; honest stub until then — §4.6) ────
+
+  // Governance plane — server shapes (pgCK 0.4.x): propose {op,requires_quorum,detail}; vote {about,value}; apply {about}.
+  async propose(op, detail = {}, requires_quorum = 1) { return this._gov(OP_VERB.propose, { op, requires_quorum, detail }); }
+  async vote(proposalIri, value) { return this._gov(OP_VERB.vote, { about: proposalIri, value }); }
+  async apply(proposalIri) { return this._gov(OP_VERB.apply, { about: proposalIri }); }
+  async _gov(verb, payload) {
+    const r = await this.do(verb, payload);
+    if (isUnknownAffordance(r)) return { ok: false, error: 'gov_plane_unavailable' };
+    return r;
+  }
+
+  // ── Reactive reads + lifecycle (delegate to L1) ────────────────────────────
+
+  view(urn, opts) { this._assertOpen(); return this._store.view(urn, opts); }
+  urn(urn) { return this._store.urn(urn); }
+  bind(pattern, fn, opts) { this._assertOpen(); return this._store.bind(pattern, fn, opts); }
+  bindOnce(pattern, fn, opts) { this._assertOpen(); return this._store.bindOnce(pattern, fn, opts); }
+
+  async close() {
+    if (this._closed) return;
+    this._closed = true;
+    for (const u of this._unsubs) { try { u(); } catch { /* ignore */ } }
+    this._unsubs = [];
+    this._store.dispose();
+    if (this._transport && typeof this._transport.close === 'function') await this._transport.close();
+  }
+  dispose() { return this.close(); }
+}
+
+/**
+ * The application surface. `CK.activate(kernel, opts?)` brings a concept kernel to life: establishes
+ * the authenticated identity (the transport's, derived from the Envoy-verified JWT — the client never
+ * asserts identity), subscribes the kernel's granted scope, and returns a live handle.
+ */
+export const CK = {
+  async activate(kernel, opts = {}) {
+    const kernelUrn = normalizeKernel(kernel);
+
+    // L0 — the dispatch transport. Injectable (opts.transport) for testing/harnesses; otherwise the
+    // recut CKClient is constructed (Track T). We import it lazily so this module loads without NATS.
+    let transport = opts.transport;
+    if (!transport) {
+      const mod = await import('./ck-client.js');
+      const CKClient = mod.CKClient ?? mod.default;
+      transport = new CKClient({ ...opts, kernel: kernelUrn.replace('ckp://Kernel#', '') });
+    }
+    if (typeof transport.connect === 'function') await transport.connect();
+
+    // L1 — the typed-instance cache, wired with a dispatcher so CKView.fetch() works.
+    const store = new CKStore({
+      replaceById: opts.replaceById,
+      dedupBySeq: opts.dedupBySeq,
+      recentCapacity: opts.recentCapacity,
+      dispatch: (verb, payload) => transport.dispatch(verb, kernelUrn, payload),
+    });
+
+    // Discover the kernel's affordances (sealed rows ∩ identity grants — degrades to full surface
+    // honestly until pgCK can answer "what may this identity do here?").
+    let affordances = [];
+    try {
+      if (typeof transport.affordances === 'function') affordances = await transport.affordances(kernelUrn);
+      else { const r = await transport.dispatch('kernel.affordances', kernelUrn, {}); affordances = (r && r.result) || []; }
+    } catch { affordances = []; }
+
+    const handle = new ConceptKernel(kernelUrn, transport, store, affordances, opts);
+
+    // Subscribe the granted result/event scope; granted events feed the cache.
+    if (typeof transport.subscribe === 'function') {
+      const unsub = transport.subscribe(kernelUrn, (msg) => store.ingest(msg));
+      if (typeof unsub === 'function') handle._unsubs.push(unsub);
+    }
+
+    // Hydrate current state when instance.snapshot is reachable + granted (closes F-E client-side).
+    if (opts.hydrate !== false) {
+      try { const snap = await handle.snapshot(); if (Array.isArray(snap) && snap.length) store.ingest(snap); } catch { /* not granted yet */ }
+    }
+
+    return handle;
+  },
+};
+
+/**
+ * @ckOn(urn) — decorator sugar over `k.bind`. Records the binding on the class; wired when the
+ * instance's handle field (`this.kernel` / `this.ck` / `this._ck`) is set. The function form
+ * `k.bind(urn, fn)` is the canonical surface (§4.9).
+ */
+export function ckOn(urn, opts = {}) {
+  return function (target, key) {
+    const ctor = target?.constructor ?? target;
+    (ctor.__ckOn ||= []).push({ urn, key, opts });
+    return undefined;
+  };
+}
+
+/** Wire @ckOn-decorated methods of `obj` onto a handle (call after assigning the handle field). */
+export function wireCkOn(obj, handle) {
+  const binds = obj?.constructor?.__ckOn || [];
+  const unbinds = binds.map(({ urn, key, opts }) => handle.bind(urn, (...a) => obj[key](...a), opts));
+  return () => unbinds.forEach((u) => u && u());
+}
+
+export default CK;

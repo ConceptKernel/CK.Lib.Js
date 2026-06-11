@@ -2,6 +2,163 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.0] — 2026-06-11
+
+> **✅ RELEASED 2026-06-11 — attested-success.** CI run `27374736960` → `ghcr.io/conceptkernel/ck-lib-js:1.5.0`
+> @ `sha256:195c20713314653b5a6f0078be5783520754ba7010f457c87ad2da66d771117d`; `gh attestation verify` ✓;
+> `LATEST.md` advanced; GitHub Release live. **Byte-verified:** bundle = exactly `ck.js` + `ck-client.js` +
+> `ck-store.js` + `vendor/{nats.ws,msgpack}.js` + README/LICENSE (no `index.html`/`ck-page` — the legacy
+> console is gone). Terminal status logged; the next tag is unblocked (PROVENANCE Rule 3/4).
+
+**Dispatch-only concept-kernel surface — aligned to CKP v3.9 Critical Isolation.** The client becomes
+dispatch-only: it authenticates and dispatches typed payloads, and nothing else crosses. There is **no
+RDF, no quad store, no SPARQL, no query engine** on the client — it addresses URNs and typed instances,
+never triples, graphs, or storage layout (`SPEC.CK-LIB-JS.v1.5.0.md` §0, §0.1). Built on the **v1.4.2
+vendored base** (`ck-client.js` imports `./vendor/*`; no runtime CDN — air-gapped, supply-chain closed).
+
+### Added / Changed — facade adapted to pgCK 0.4.2's live wire (verified vs ociger-ck-allinone v0.7.17)
+- **`ck.js` (`CK`/`ConceptKernel`):** `create` nests `{task:{target_kernel,…}}` + optimistic cache-insert
+  (the sealed reply is a receipt; the sealed event reconciles via replace-by-id); `query` emits
+  `{type:<IRI>, filter:[{op,key,value}]}`; a per-verb reply normalizer maps `rows`/`kernels`/`instances`/
+  `reached`/`candidates` → `.result` so the typed cache ingests; governance `propose(op,detail,requires_quorum)`
+  / `vote(iri,value)` / `apply(iri)`; discovery verb `affordances`.
+- **`ck-client.js`:** scrubbed the legacy production-endpoint defaults (`wss://stream.tech.games`,
+  `id.tech.games`, realm `techgames`) — endpoints derive same-origin (`wss://<host>/wss`) or are
+  explicit-required (throws). No client auto-targets a fixed host.
+- **Verified LIVE** vs pgCK 0.4.2 over NATS-WSS: governed seals (`proof_digest`), typed reads ingest,
+  governance round-trips (propose→vote→apply, epoch advance). Open wire-contract questions (reply-envelope
+  normalization, `instance.create` routing) filed with pgCK; `normalizeReply` is forward-compatible (only
+  fills an absent `.result`).
+
+> Unreleased — no `1.5.0` tag until a built + attested `ghcr.io/conceptkernel/ck-lib-js:1.5.0` image
+> verifies (`PROVENANCE.md`). The transport flip to the `ckp.dispatch` four-tuple ingress is **deferred**
+> — v1.5.0 ships the dispatch surface over the **current per-verb wire** via the v3.8→v3.9 shim and the
+> `instance.*` aliases; the four-tuple flip lands when pgCK CI-B presents `ckp.dispatch` natively.
+
+### Added — the L2 concept-kernel surface (`ck.js`)
+- **`ck.js`** — exports `CK` / `ConceptKernel` (default + named) + `ckOn` (decorator). `CK.activate(kernel)`
+  brings a concept kernel to life (authenticate + subscribe granted scope) and returns a live
+  `ConceptKernel` handle. App code names concept kernels and concepts (URNs) — never NATS subjects,
+  codecs, handles, trace ids, quads, graph ids, or query strings.
+- **Explicit operation→verb table** maps the stable handle floor (`create`/`update`/`transition`/`link`/
+  `list`/`query`/`get`/`reach`/`verify`/`provenance`/`snapshot`/`validate`/`retire`/`propose`/`vote`/
+  `apply`) to v3.9 `instance.*` / `kernel.*` verbs. Honest-degradation fallbacks (transition→update,
+  query→instances.list, governance `{ ok:false, gov_plane_unavailable }`) now have real server backing
+  but degrade honestly until the pgCK CI gates land.
+
+### Added — the L1 typed-instance cache (`ck-store.js`)
+- **`ck-store.js`** — `CKStore` (default), a Map of `@id`/URN → typed JSONB instance fed only by dispatch
+  replies + granted-scope events. **Not an RDF store**: no quads, no 6-way hex index, no DatasetCore, no
+  SPARQL, no `toQuads`. Carries the former hex-store's *instance* projection (replace-by-id, dedup-by-seq,
+  recent ring); the *triple* projection is gone. Reactive reads via `view`/`urn`/`bind` (`CKView`,
+  `CKSubject`, `ckBind`). There is **no legacy ck-store** — this is `ck-store.js`.
+
+### Changed — `ck-client.js` gains the dispatch transport (on the v1.4.2 vendored base)
+- **`ck-client.js`** — the vendored v1.4.2 NATS WSS client gains the L0 dispatch surface the `ck.js`
+  facade composes: a constructor dispatch-state block (`_pending` / `_scopeListeners` / `_dispatchMode` /
+  `_dispatchIngress` / `_dispatchTimeout`), `disconnect()` pending/scope cleanup, Trace-Id correlation +
+  granted-scope delivery in the subscription loop, and the methods `dispatch` / `_resolvePending` /
+  `subscribe` / `affordances` / `close`. `dispatch()` carries the four-tuple ⟨verb, kernel_urn, payload,
+  identity⟩; against a pre-CI-B pgCK the transitional `v3.8` shim maps each verb to its per-verb subject
+  (removed at pgCK CI-B). The `./vendor/*` imports are unchanged — **no esm.sh, air-gapped**.
+
+### Package / bundle
+- **`package.json`** — `version` → `1.5.0`; `main` → `ck.js`; `exports`: `.` → `./ck.js`,
+  `./internal/client` → `./ck-client.js`, `./internal/store` → `./ck-store.js`, `./client` →
+  `./ck-client.js`; `files` adds `ck.js` + `ck-store.js`.
+- **`Dockerfile`** — `COPY ck.js ck-client.js ck-store.js /` + `COPY vendor /vendor`; version label →
+  `1.5.0`; header → v3.9 dispatch-only (vendored, air-gapped).
+
+---
+
+## [1.4.3] — 2026-06-11
+
+**Corrective release — the first OCI bundle that actually ships the stripped client.**
+
+### Fixed — release pipeline built `main`, not the tag (CRITICAL packaging integrity)
+- `oci-publish.yml` checked out `ref: main` (since the v1.3.9 pipeline collapse). Releases v1.4.1/v1.4.2
+  were tagged on a task branch (per the LOCKS discipline — release commits never land on `main`), so their
+  CI builds packaged **main's stale v1.4.0 tree**: the published `:1.4.1` and `:1.4.2` OCI bundles are
+  byte-identical to `:1.4.0` — the full pre-strip 18-file set (incl. `ck-hex-store.js`, `ck-rdf-bridge.js`,
+  `ck-page.js`, `vendor/anime.esm.min.js`, and the esm.sh-importing client). **The strip announced in
+  [1.4.1]/[1.4.2] never reached the published artifacts.** Found by oci-germination's byte-level bundle
+  audit (verified 3×). The attestations are valid signatures over the wrong content — SLSA provenance binds
+  digest↔workflow-run, not digest↔intended source tree.
+- Fix: checkout now defaults to the **pushed tag**; `LATEST.md` is committed to `main` via an explicit
+  `origin/main` checkout in the final step (never pushing the tag's tree to `main`).
+- **Consumer guidance:** treat `:1.4.1`/`:1.4.2` as equivalent to `:1.4.0` (pre-strip). Pin **`:1.4.3`**
+  for the stripped surface. Tags remain immutable on GHCR — no re-cuts.
+
+### Changed
+- `ck-client.js`: long-form result subscription broadened `result.kernel.<K>.action.>` →
+  `result.kernel.<K>.>` (grammar-agnostic, mirrors the event-side breadth; Trace-Id is the correlator).
+  Required for v3.9 relays, which publish `result.kernel.<K>.<verb>` without the v3.8 `.action.` shim segment.
+
+Content is otherwise exactly the [1.4.2] claim: single `ck-client.js` with vendored `nats.ws` + `@msgpack`
+under `vendor/` — no client RDF tier, no esm.sh, air-gapped.
+
+---
+
+## [1.4.2] — Unreleased
+
+**Hardening — vendored transport; no runtime CDN; air-gapped.** Closes the last supply-chain vector
+called out in v1.4.1: `ck-client.js` no longer runtime-loads `nats.ws` + `@msgpack/msgpack` from
+**esm.sh**. Both are now **vendored locally** under `vendor/` as self-contained browser ESM bundles,
+so the client has zero external runtime dependencies and runs air-gapped. No behavioural change — the
+NATS WSS + Keycloak JWT surface is byte-for-byte the v1.4.1 client; only the import source moved from
+CDN to local.
+
+> Unreleased — no `1.4.2` tag until a built + attested `ghcr.io/conceptkernel/ck-lib-js:1.4.2` image
+> verifies (`PROVENANCE.md`).
+
+### Changed — vendored NATS transport (closes the esm.sh supply-chain vector)
+- **`vendor/nats.ws.js`** — `nats.ws@1.30.3` + all transitive deps bundled to a single self-contained
+  browser ESM (esbuild `--bundle --format=esm --platform=browser --target=es2020 --minify`). Exposes
+  only the consumed named exports `{ connect, JSONCodec, headers }`. Node's built-in `crypto` is stubbed
+  empty at bundle time — its only reference is a dead `require('crypto')` PRNG fallback unreachable in
+  browsers (which use `globalThis.crypto.getRandomValues`).
+- **`vendor/msgpack.js`** — `@msgpack/msgpack@3.0.0` bundled the same way; exposes `{ encode, decode }`.
+- **`ck-client.js`** — imports rewritten from `https://esm.sh/nats.ws@1.30.3` /
+  `https://esm.sh/@msgpack/msgpack@3.0.0` to `./vendor/nats.ws.js` / `./vendor/msgpack.js`. No `esm.sh`
+  reference remains in the shipped module.
+- **`package.json`** — `version` → `1.4.2`; `vendor/` re-added to `files` (publishes with the package).
+- **`Dockerfile`** — `COPY vendor /vendor`; version label → `1.4.2`; header notes the vendored
+  no-CDN/air-gapped posture.
+
+---
+
+## [1.4.1] — Unreleased (pending built + attested OCI image)
+
+**Stripped intermediary — the "Critical Isolation Alpha" client half.** Removes the client RDF tier
+and all unused/attack surface; keeps the NATS WSS client + Keycloak **JWT auth working exactly as
+v1.4.0** (the current verb wire). `web2/` develops against this stripped client while the full
+dispatch-only **v1.5.0** lands on its own staged, pgCK-gate-aligned thread.
+
+> Unreleased — no `1.4.1` tag until a built + attested `ghcr.io/conceptkernel/ck-lib-js:1.4.1` image
+> verifies (`PROVENANCE.md`). Coordinated via NOTIFIES with **pgCK** (`intermediary-isolation-alpha-release`,
+> AGREED) + **oci-germination** (`intermediary-stripped-release`, confirmed: pipeline unchanged for the
+> smaller bundle — bundle spec is a layout-agnostic full-root merge).
+
+### Removed — client RDF tier + unused surface (archived locally to `_WIP/`, never in history)
+- **`ck-rdf-bridge.js`** (`toQuads`, `dataFactory`, `makeNativeDatasetCore`) + **`ck-hex-store.js`**
+  (the 6-way hex-indexed RDF graph mirror, `toRdfJs`, `DatasetCore`) — no client RDF/quad surface remains.
+- **`vendor/anime.esm.min.js`** (vendored 3rd-party — supply-chain) + **`scripts/`** (dev tooling).
+- **Unused render/page modules**: `ck-page`, `ck-bus`, `ck-kernel`, `ck-runtime`, `ck-registry`,
+  `ck-shapes`, `ck-anim`, `ck-anim-grammar`, `ck-sound`, `ck-materializer`, `ck-store`, `index.html`.
+- `package.json` `exports` reduced to `.` / `./client` → `ck-client.js`; `files` to `ck-client.js` + docs;
+  Dockerfile ships `ck-client.js` only.
+
+### Unchanged — "JWT as usual"
+- **`ck-client.js`** — the v1.3 NATS WSS client (Keycloak JWT login/refresh, per-verb subject grammar,
+  codec, dedup, dictionary, reconnect). No behavioural change; web2 imports `CKClient` exactly as today.
+
+### Known remaining vector (tracked) — RESOLVED in 1.4.2
+- `ck-client.js` runtime-loads `nats.ws` + `@msgpack/msgpack` from **esm.sh** (CDN) — needed for NATS;
+  vendoring to close the last supply-chain vector is the immediate next step (NOTIFIES.oci-germination
+  vendor+CVE thread). **Closed in [1.4.2]** by vendoring both into `vendor/*.js` (no runtime CDN).
+
+---
+
 ## [1.4.0] — 2026-06-05
 
 ### Added — CKHexStore at repo root (`ck-hex-store.js`)
