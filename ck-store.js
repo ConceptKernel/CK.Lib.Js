@@ -90,7 +90,7 @@ export class CKView {
     return this;
   }
   off(event, cb) { this._listeners.delete(cb); return this; }
-  /** Dispatch `instance.get` (or `instance.query`) through the store's wired dispatcher. */
+  /** Dispatch `instance.get` through the store's wired dispatcher. */
   async fetch() {
     if (typeof this._store._dispatch !== 'function') {
       throw new Error('CKView.fetch() requires a dispatcher wired into CKStore (set via the L2 handle)');

@@ -1,117 +1,115 @@
-# CK.Lib.Js — attach JavaScript hosts, tools and agents to a Concept Kernel
+# CK.Lib.Js — operate concept kernels from JavaScript
 
 **Package:** [@conceptkernel/cklib](https://www.npmjs.com/package/@conceptkernel/cklib) ·
-**OCI bundle:** `ghcr.io/conceptkernel/ck-lib-js` (attested) ·
+**Substrate:** [pgCK](https://github.com/styk-tv/pgCK) (CKP v3.9) ·
 **License:** MIT
 
-A **concept kernel** is a governed semantic substrate: typed instances in a knowledge graph whose
-every change goes through a **sealed registry of verbs**, lands with **cryptographic provenance**
-(proof digests in a ledger), and is bounded by a **role floor** — identity comes from a verified JWT,
-never from the client. The reference substrate is [pgCK](https://github.com/styk-tv/pgCK)
-(CKP v3.9 "Critical Isolation"): the entire governance plane lives server-side in Postgres behind one
-closed door, `ckp.dispatch`.
+A **concept kernel** is a small governed universe of typed facts. Everything in it — the kernel,
+every instance, every participant — has a **URN**. You address meaning, never infrastructure: there
+are no queues, no topics, no endpoints, no tables anywhere in this surface. Facts you write are
+validated against the kernel's sealed shapes, sealed with a cryptographic proof, and delivered as
+live events to everyone attached. Facts others write arrive at your handlers the same way. The
+kernel is the single source of truth *and* the message bus *and* the audit trail — because in a
+concept kernel those are one thing.
 
-**CK.Lib.Js is the JavaScript attach-point.** Any JS host — a browser page, a CLI tool, a service,
-an LLM agent — connects over **NATS WebSocket** with **Keycloak JWT** auth and becomes a *governed
-participant*: it can only do what the kernel's registry declares and its identity is granted, every
-write it makes is sealed, and everything it reads is typed. No query language on the wire, no client
-RDF, no client-asserted identity — the client stays small precisely so the governance can't be bypassed.
+A kernel comes to life with one bootstrap call on the substrate. From then on, anything that speaks
+JavaScript attaches to it by name.
+
+## Attach and operate
 
 ```javascript
 import { CK } from "@conceptkernel/cklib";
 
-const k = await CK.activate("pgCK");                       // attach → connected, governed handle
+const tasks = await CK.activate("Tasks");        // attach. that is the whole setup.
 
-await k.create("Task", { title: "Ship v3.9" });            // governed write → sealed (proof digest)
-const open = await k.query("Task", { lifecycle_state: { eq: "open" } });   // typed read
-console.log(k.affordances());                              // what THIS identity may do HERE
+// Create something that did not exist a moment ago.
+const t = await tasks.create("Task", { title: "Review the Q3 draft", assignee: "ana" });
+//  → { ok: true, id: "task-…" } — shape-validated, sealed, proof-chained by the kernel
+
+// React by URN — to this task, to the whole kernel, to a predicate. Things that
+// don't exist yet are valid addresses; the handler fires when they come to be.
+tasks.bind(`ckp://Instance#${t.id}`, (inst) => render(inst));
+tasks.bind("ckp://Kernel#Tasks",     (inst) => refreshBoard(inst));
+tasks.bind("ckp://Edge#mentioned",   (inst) => ping(inst));
+
+// Ana attaches from her own browser and drops a message on your task:
+//     await tasks.notify(t.id, "mentioned", { text: "deadline moved" });
+// Your bind fires, live. And the proof is already waiting:
+await tasks.verify(t.id);        // { verified: true, proof_digest: "9202c6…" }
+await tasks.provenance(t.id);    // the chain — who did what, in what order
 ```
 
-That is the whole consumption model: **activate a kernel, exercise its affordances.**
+## What did *not* happen above
 
-## Why "semantically governable"
+- You never named a queue, topic, connection string, or endpoint. None exist in this API.
+- You never wrote a subscription for Ana's message. **Addressing the URN was the subscription.**
+- You never validated the payload. The kernel's **sealed shape** did, before the fact could land —
+  an invalid write cannot exist.
+- You never built an audit trail. **Every fact carries one** from the moment it is created.
+- Nobody polled. The seal *is* the event.
 
-| You call | The substrate guarantees |
-|---|---|
-| `k.create / update / link / retire` | registry-routed verb → SHACL-validated → **sealed** with provenance (`proof_digest`, ledger seq) |
-| `k.get / query / reach / snapshot` | **typed reads** — named, grantable affordances; no open query surface |
-| `k.verify(id)` / `k.provenance(id)` | proof-digest check / PROV chain for any instance |
-| `k.propose / vote / apply` (via `k.do`) | schema and verb-set changes go through the **governance plane**, not migrations |
-| `k.affordances()` | the kernel's declared verb surface ∩ your identity's grants |
-| identity | derived server-side from the **verified JWT** (Envoy/Keycloak); the client cannot assert it |
+## The capability surface
 
-Agents and tools attach exactly like pages — same four lines. An agent discovers what it may do
-(`affordances()`), acts only through governed verbs, and every action it takes is attributable and
-sealed. That is what makes a fleet of attached hosts *governable* rather than merely connected.
+| Capability | Operations | What the kernel guarantees |
+|---|---|---|
+| Write facts | `create` `update` `link` `transition` `retire` | shape-validated → sealed → proof-chained → emitted. Lifecycle moves are gated by the kernel's sealed state machine — an illegal transition cannot land |
+| Read, typed | `get` `query` `reach` `snapshot` | named, grantable reads. There is no query language on this surface — and none to inject |
+| Prove | `verify` `provenance` | proof digest and the full chain, for any URN, any time |
+| Pre-flight | `validate` | dry-run a body against the sealed shape before writing |
+| Address someone | `notify` | a sealed fact that is also a delivered event — messaging with provenance |
+| Change the rules | `propose` `vote` `apply` | the schema and verb set evolve by **governance**, not migration |
+| Discover | `affordances()` | what *this identity* may do *here* — nothing else is callable |
+| React | `bind` `bindOnce` `view` `urn` · `ckOn`/`wireCkOn` | URN-pattern handlers and reactive views fed by the live event scope |
 
-## Layers (three modules, one direction)
+All of it rides one closed door — every operation compiles to a governed dispatch
+(`k.do(verb, payload)` is the open form for any affordance the kernel declares).
 
-```
-ck.js        L2  CK.activate(kernel) → ConceptKernel handle (do / create / query / … / ckOn)
-ck-client.js L0  CKClient — NATS-WSS transport, JWT login/refresh, Trace-Id correlated dispatch
-ck-store.js  L1  CKStore — typed-instance cache (CKView / CKSubject / ckBind reactivity)
-```
+## Identity and participation
+
+Identity is derived from the **verified JWT** on the connection — the client cannot assert who it
+is. Every sealed fact carries `created_by`. And "client" means anything: a browser page, a CLI, a
+service, an **LLM agent** — they all attach with the same four lines and operate under the same
+grants. A fleet of attached agents is *governable*, not merely connected: each one can only do what
+the kernel declares and its identity is granted, and everything it does is attributable and sealed.
+
+## Under the hood (you do not need this to use it)
+
+The transport is NATS-over-WebSocket with Keycloak JWT auth, fully **vendored** (`vendor/` —
+zero dependencies, zero CDN fetches, runs air-gapped), with Trace-Id-correlated dispatch onto
+pgCK's single governed door. Artifacts are CI-built from the tag, SLSA-attested, and byte-verified
+(`gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:<ver> --repo ConceptKernel/CK.Lib.Js`).
+Wire details: [`COMPLIANCE.md`](./COMPLIANCE.md).
 
 ```javascript
-import { CK, ConceptKernel, ckOn } from "@conceptkernel/cklib";      // the facade (start here)
+import { CK, ConceptKernel, ckOn } from "@conceptkernel/cklib";      // the surface above
 import { CKClient } from "@conceptkernel/cklib/internal/client";     // transport only (advanced)
-import { CKStore }  from "@conceptkernel/cklib/internal/store";      // cache only (advanced)
+import { CKStore }  from "@conceptkernel/cklib/internal/store";      // typed cache only (advanced)
 ```
-
-`CK.activate(kernel, opts)` accepts transport options (`wssEndpoint`, `realm`, credentials…) passed
-through to `CKClient`, cache options (`replaceById`, `dedupBySeq`, `recentCapacity`), and an
-injectable `opts.transport` for tests/harnesses. `ckOn(urn)` / `wireCkOn` bind sealed-event handlers
-to URN patterns.
-
-## Hardened by construction
-
-- **Vendored transport** — `nats.ws` + `@msgpack/msgpack` are bundled under `vendor/`; **zero runtime
-  CDN fetches**, runs air-gapped.
-- **No client RDF/quad tier, no render tier** — removed in v1.4.1 (the "Critical Isolation" strip);
-  the attack surface is one transport module plus a typed cache.
-- **Attested, byte-verified artifacts** — every OCI release is CI-built from the tag, SLSA-attested,
-  and byte-listed against the tagged tree before announcement
-  (`gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:<ver> --repo ConceptKernel/CK.Lib.Js`).
-
-**Wire (current):** `input.kernel.<K>.action.<verb>` out; results correlated by `Trace-Id` on
-`result.kernel.<K>.>` (grammar-agnostic — covers both the v3.8 `.action.` shim and v3.9-clean
-subjects). The four-tuple `ckp.dispatch` ingress flip is staged separately (CE-B-2).
-
-## Release state (honest)
-
-| Channel | Version | State |
-|---|---|---|
-| OCI `ghcr.io/conceptkernel/ck-lib-js` | **`:1.4.3`** | published, attested, **byte-verified stripped** (`ck-client.js` + `vendor/`) — current pin for bundles |
-| This tree | `1.5.0` | dispatch-only surface (`ck.js` + `ck-store.js` + dispatch transport) — code-complete; tag gated on the live end-to-end verify vs pgCK v0.4.2 |
-| npm `@conceptkernel/cklib` | `1.0.0` | **legacy (CKP v3.5 era, pre-isolation) — do not use for v3.9 work**; `1.5.0` publishes at tag |
-
-Treat OCI `:1.4.1`/`:1.4.2` as `:1.4.0` (pre-strip) — see `CHANGELOG.md` `[1.4.3]` for the
-packaging-integrity disclosure.
 
 ## Install
 
 ```bash
-npm install @conceptkernel/cklib        # 1.5.0 on tag; until then prefer the OCI bundle below
+npm install @conceptkernel/cklib        # 1.5.0 publishes at tag; until then use the OCI bundle
 ```
 
-OCI static bundle (`ckp:static`, Shape A — files at image root for `COPY --from=cklib_source / dest/`):
-
 ```dockerfile
-FROM ghcr.io/conceptkernel/ck-lib-js:1.4.3 AS cklib_source
+FROM ghcr.io/conceptkernel/ck-lib-js:1.4.3 AS cklib_source           # attested, byte-verified
 COPY --from=cklib_source / /app/cklib/
 ```
 
-## Runtime requirements
+## Release state
 
-- **NATS WSS endpoint** (native NATS WebSocket listener, e.g. behind Envoy at `wss://<host>/wss`).
-- **Keycloak realm** for JWT (`login()`/`logout()`, auto-refresh, reconnect re-applies server ACLs).
-- **pgCK ≥ 0.4** for the governed `instance.*` surface (legacy `task.*` aliases resolve during the
-  migration window; pre-CI-E gaps degrade honestly — empty results, never fabricated ones).
-- Browser/host: ES2020+ (`WebSocket`, `fetch`, async iterators). No other dependencies — everything
-  is vendored.
+| Channel | Version | State |
+|---|---|---|
+| OCI `ghcr.io/conceptkernel/ck-lib-js` | **`:1.4.3`** | published, attested, byte-verified (transport client + `vendor/`) |
+| This tree | `1.5.0` | the full surface above — code-complete; tag gated on the live end-to-end verify vs pgCK v0.4.2 |
+| npm `@conceptkernel/cklib` | `1.0.0` | legacy (CKP v3.5 era) — **do not use**; `1.5.0` publishes at tag |
+
+Treat OCI `:1.4.1`/`:1.4.2` as `:1.4.0` — see `CHANGELOG.md` `[1.4.3]`. Requires pgCK ≥ 0.4 for the
+governed `instance.*` surface; pre-CI-E gaps degrade honestly (empty results, never fabricated ones).
 
 ## References
 
-- Provenance & verification: [`PROVENANCE.md`](./PROVENANCE.md) · [`LATEST.md`](./LATEST.md)
-- Transport contract & per-version delta: [`COMPLIANCE.md`](./COMPLIANCE.md) · [`CHANGELOG.md`](./CHANGELOG.md)
-- Substrate: [pgCK](https://github.com/styk-tv/pgCK) · Bundles: [oci-germination](https://github.com/sporaxis-com/oci-germination) · [NATS](https://docs.nats.io)
+[`PROVENANCE.md`](./PROVENANCE.md) · [`LATEST.md`](./LATEST.md) · [`COMPLIANCE.md`](./COMPLIANCE.md) ·
+[`CHANGELOG.md`](./CHANGELOG.md) · [pgCK](https://github.com/styk-tv/pgCK) ·
+[oci-germination](https://github.com/sporaxis-com/oci-germination)
