@@ -19,9 +19,11 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
+      # Checkout the PUSHED TAG (default ref) — NEVER a fixed branch. Building `ref: main`
+      # while releases are tagged on task branches shipped stale v1.4.0 bytes as :1.4.1/:1.4.2
+      # (the 2026-06-11 packaging-integrity incident; see CHANGELOG [1.4.3]).
       - uses: actions/checkout@v4
         with:
-          ref: main
           fetch-depth: 0
 
       - uses: docker/setup-buildx-action@v3
@@ -201,10 +203,16 @@ jobs:
             || echo "Release already exists, skipping"
 
       - name: Commit LATEST.md to main
+        # The working tree is the TAG checkout; LATEST.md lives on main. Stash the render,
+        # switch to origin/main explicitly, and commit there — never push the tag's tree to main.
         run: |
           set -euo pipefail
+          cp LATEST.md "${RUNNER_TEMP}/LATEST.md"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git checkout -f -B publish-latest origin/main
+          cp "${RUNNER_TEMP}/LATEST.md" LATEST.md
           if [ -n "$(git status --porcelain LATEST.md)" ]; then
             git add LATEST.md
             git commit -m "docs: LATEST.md → ${GITHUB_REF_NAME} (auto, attestation-gated)"

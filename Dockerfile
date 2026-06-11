@@ -1,5 +1,5 @@
-# CK.Lib.Js v1.4.2 OCI Bundle — Static Artifact (STRIPPED: client RDF tier removed)
-# v1.4.2 (hardening): the NATS transport (nats.ws + @msgpack/msgpack) is now VENDORED locally under
+# CK.Lib.Js v1.4.3 OCI Bundle — Static Artifact (STRIPPED: client RDF tier removed)
+# v1.4.3 (hardening): the NATS transport (nats.ws + @msgpack/msgpack) is now VENDORED locally under
 # vendor/ as self-contained browser ESM bundles. ck-client.js imports ./vendor/* — there is NO runtime
 # CDN fetch (esm.sh removed), so the bundle is air-gapped and the last supply-chain vector is closed.
 # Carries forward v1.4.1's stripped surface: the client RDF tier (ck-rdf-bridge.js + the hex/RDF quad
@@ -22,7 +22,7 @@ COPY README.md LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
 LABEL org.opencontainers.image.description="CKP v3.8 NATS WSS client (stripped, JWT, vendored transport — no runtime CDN) — static folder mount artifact"
-LABEL org.opencontainers.image.version="1.4.2"
+LABEL org.opencontainers.image.version="1.4.3"
 LABEL org.opencontainers.image.source="https://github.com/ConceptKernel/CK.Lib.Js"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.designation="ckp:static"
