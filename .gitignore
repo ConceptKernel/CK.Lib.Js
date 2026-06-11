@@ -5,6 +5,10 @@ ref-*
 # other repos, alignment docs). Public repo: keep working state out of history.
 _WIP/
 
+# SPEC.* are working/governance docs — kept LOCAL, never tracked (maintainer directive 2026-06-11).
+# Distributed artifacts (npm/OCI) never carry a spec; keep them out of the public repo's history.
+SPEC*.md
+
 # Python build artifacts
 __pycache__/
 *.pyc
