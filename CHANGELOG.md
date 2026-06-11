@@ -51,6 +51,34 @@ vendored base** (`ck-client.js` imports `./vendor/*`; no runtime CDN — air-gap
 
 ---
 
+## [1.4.3] — 2026-06-11
+
+**Corrective release — the first OCI bundle that actually ships the stripped client.**
+
+### Fixed — release pipeline built `main`, not the tag (CRITICAL packaging integrity)
+- `oci-publish.yml` checked out `ref: main` (since the v1.3.9 pipeline collapse). Releases v1.4.1/v1.4.2
+  were tagged on a task branch (per the LOCKS discipline — release commits never land on `main`), so their
+  CI builds packaged **main's stale v1.4.0 tree**: the published `:1.4.1` and `:1.4.2` OCI bundles are
+  byte-identical to `:1.4.0` — the full pre-strip 18-file set (incl. `ck-hex-store.js`, `ck-rdf-bridge.js`,
+  `ck-page.js`, `vendor/anime.esm.min.js`, and the esm.sh-importing client). **The strip announced in
+  [1.4.1]/[1.4.2] never reached the published artifacts.** Found by oci-germination's byte-level bundle
+  audit (verified 3×). The attestations are valid signatures over the wrong content — SLSA provenance binds
+  digest↔workflow-run, not digest↔intended source tree.
+- Fix: checkout now defaults to the **pushed tag**; `LATEST.md` is committed to `main` via an explicit
+  `origin/main` checkout in the final step (never pushing the tag's tree to `main`).
+- **Consumer guidance:** treat `:1.4.1`/`:1.4.2` as equivalent to `:1.4.0` (pre-strip). Pin **`:1.4.3`**
+  for the stripped surface. Tags remain immutable on GHCR — no re-cuts.
+
+### Changed
+- `ck-client.js`: long-form result subscription broadened `result.kernel.<K>.action.>` →
+  `result.kernel.<K>.>` (grammar-agnostic, mirrors the event-side breadth; Trace-Id is the correlator).
+  Required for v3.9 relays, which publish `result.kernel.<K>.<verb>` without the v3.8 `.action.` shim segment.
+
+Content is otherwise exactly the [1.4.2] claim: single `ck-client.js` with vendored `nats.ws` + `@msgpack`
+under `vendor/` — no client RDF tier, no esm.sh, air-gapped.
+
+---
+
 ## [1.4.2] — Unreleased
 
 **Hardening — vendored transport; no runtime CDN; air-gapped.** Closes the last supply-chain vector
