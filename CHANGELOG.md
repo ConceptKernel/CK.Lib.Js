@@ -2,13 +2,30 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
-## [1.5.0] — Unreleased
+## [1.5.0] — 2026-06-11
+
+> **Tagged 2026-06-11.** CI build → SLSA attest → byte-verify in progress; this entry's TERMINAL status
+> (attested-success / disclosed-fail) is recorded here on settle — **no next tag until then** (PROVENANCE Rule 3/4).
 
 **Dispatch-only concept-kernel surface — aligned to CKP v3.9 Critical Isolation.** The client becomes
 dispatch-only: it authenticates and dispatches typed payloads, and nothing else crosses. There is **no
 RDF, no quad store, no SPARQL, no query engine** on the client — it addresses URNs and typed instances,
 never triples, graphs, or storage layout (`SPEC.CK-LIB-JS.v1.5.0.md` §0, §0.1). Built on the **v1.4.2
 vendored base** (`ck-client.js` imports `./vendor/*`; no runtime CDN — air-gapped, supply-chain closed).
+
+### Added / Changed — facade adapted to pgCK 0.4.2's live wire (verified vs ociger-ck-allinone v0.7.17)
+- **`ck.js` (`CK`/`ConceptKernel`):** `create` nests `{task:{target_kernel,…}}` + optimistic cache-insert
+  (the sealed reply is a receipt; the sealed event reconciles via replace-by-id); `query` emits
+  `{type:<IRI>, filter:[{op,key,value}]}`; a per-verb reply normalizer maps `rows`/`kernels`/`instances`/
+  `reached`/`candidates` → `.result` so the typed cache ingests; governance `propose(op,detail,requires_quorum)`
+  / `vote(iri,value)` / `apply(iri)`; discovery verb `affordances`.
+- **`ck-client.js`:** scrubbed the legacy production-endpoint defaults (`wss://stream.tech.games`,
+  `id.tech.games`, realm `techgames`) — endpoints derive same-origin (`wss://<host>/wss`) or are
+  explicit-required (throws). No client auto-targets a fixed host.
+- **Verified LIVE** vs pgCK 0.4.2 over NATS-WSS: governed seals (`proof_digest`), typed reads ingest,
+  governance round-trips (propose→vote→apply, epoch advance). Open wire-contract questions (reply-envelope
+  normalization, `instance.create` routing) filed with pgCK; `normalizeReply` is forward-compatible (only
+  fills an absent `.result`).
 
 > Unreleased — no `1.5.0` tag until a built + attested `ghcr.io/conceptkernel/ck-lib-js:1.5.0` image
 > verifies (`PROVENANCE.md`). The transport flip to the `ckp.dispatch` four-tuple ingress is **deferred**

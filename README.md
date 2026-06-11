@@ -101,9 +101,8 @@ COPY --from=cklib_source / /app/cklib/
 
 | Channel | Version | State |
 |---|---|---|
-| OCI `ghcr.io/conceptkernel/ck-lib-js` | **`:1.4.3`** | published, attested, byte-verified (transport client + `vendor/`) |
-| This tree | `1.5.0` | the full surface above — code-complete; tag gated on the live end-to-end verify vs pgCK v0.4.2 |
-| npm `@conceptkernel/cklib` | `1.0.0` | legacy (CKP v3.5 era) — **do not use**; `1.5.0` publishes at tag |
+| OCI `ghcr.io/conceptkernel/ck-lib-js` | **`:1.5.0`** | current release — the full surface above; attested + byte-verified (`ck.js` + `ck-client.js` + `ck-store.js` + `vendor/`). See [`LATEST.md`](./LATEST.md) for attested digests. (`:1.4.3` = the stripped transport-only alpha.) |
+| npm `@conceptkernel/cklib` | `1.0.0` | legacy (CKP v3.5 era) — **do not use**; `1.5.0` published with provenance |
 
 Treat OCI `:1.4.1`/`:1.4.2` as `:1.4.0` — see `CHANGELOG.md` `[1.4.3]`. Requires pgCK ≥ 0.4 for the
 governed `instance.*` surface; pre-CI-E gaps degrade honestly (empty results, never fabricated ones).
