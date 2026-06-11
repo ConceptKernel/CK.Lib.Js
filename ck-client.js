@@ -113,6 +113,13 @@ class CKClient {
         this._handlers = {
             result: [], event: [], status: [], error: [], broadcast: [],
         };
+
+        // v1.5.0 dispatch-transport state (additive over the v1.3 NATS client).
+        this._pending = new Map();          // traceId → { resolve, reject, timer } (request/reply correlation)
+        this._scopeListeners = new Set();   // fn(instance|reply) — granted-scope delivery for subscribe()
+        this._dispatchMode = config.dispatchMode || 'v3.8';      // v3.8 subject-grammar shim until pgCK CI-B
+        this._dispatchIngress = config.dispatchIngress || 'ckp.dispatch';
+        this._dispatchTimeout = config.dispatchTimeout || 15000;
     }
 
     // ── Public API ───────────────────────────────────────────────────────
@@ -192,6 +199,9 @@ class CKClient {
     async disconnect() {
         for (const s of this._subs) { try { s.unsubscribe(); } catch (e) {} }
         this._subs = [];
+        for (const [, p] of this._pending) clearTimeout(p.timer);
+        this._pending.clear();
+        this._scopeListeners.clear();
         if (this.nc) { await this.nc.drain(); this.nc = null; }
         this._setConnection('disconnected');
     }
@@ -226,6 +236,74 @@ class CKClient {
         const a = this._handlers[event];
         if (a) { const i = a.indexOf(fn); if (i > -1) a.splice(i, 1); }
     }
+
+    // ── v1.5.0 dispatch-transport surface (the L0 interface the ck.js facade composes) ──
+
+    /**
+     * The single outbound primitive: carry the four-tuple ⟨verb, kernel_urn, payload, identity⟩ to
+     * pgCK and await the typed reply. Identity is the verified JWT the connection already carries — the
+     * client never asserts it. Against a pre-CI-B pgCK the transitional `v3.8` shim maps the verb to its
+     * per-verb subject; switch `dispatchMode:'v3.9'` once pgCK presents `ckp.dispatch` natively.
+     */
+    async dispatch(verb, kernelUrn, payload = {}, opts = {}) {
+        if (!this.nc) throw new Error('Not connected');
+        await this._maybeRefreshToken();
+        const traceId = this._traceId();
+        const h = this._headers(traceId);
+        h.set('Ck-Verb', String(verb));
+        if (kernelUrn) h.set('Ck-Kernel', String(kernelUrn));
+        const jc = nats.JSONCodec();
+
+        let subject, body;
+        if (this._dispatchMode === 'v3.9') {
+            subject = this._dispatchIngress;                   // ckp.dispatch closed ingress
+            body = { verb, kernel_urn: kernelUrn, payload };   // identity is server-derived (TR-02)
+        } else {
+            const name = (kernelUrn || '').replace('ckp://Kernel#', '') || this.kernel;
+            subject = `input.kernel.${name}.action.${verb}`;   // v3.8 subject-grammar shim (removed at CI-B)
+            body = { action: verb, ...payload };
+        }
+
+        return new Promise((resolve, reject) => {
+            const timeout = opts.timeout || this._dispatchTimeout;
+            const timer = setTimeout(() => {
+                this._pending.delete(traceId);
+                reject(new Error(`dispatch('${verb}') timed out after ${timeout}ms`));
+            }, timeout);
+            this._pending.set(traceId, { resolve, reject, timer });
+            try {
+                this.nc.publish(subject, jc.encode({ timestamp: new Date().toISOString(), ...body }), { headers: h });
+            } catch (e) {
+                clearTimeout(timer); this._pending.delete(traceId); reject(e);
+            }
+        });
+    }
+
+    _resolvePending(traceId, reply) {
+        const p = this._pending.get(traceId);
+        if (!p) return;
+        clearTimeout(p.timer);
+        this._pending.delete(traceId);
+        p.resolve(reply);
+    }
+
+    /** Subscribe the kernel's granted result/event scope; each granted message → onMsg(instance|reply). */
+    subscribe(kernelUrn, onMsg) {
+        if (typeof onMsg !== 'function') return () => {};
+        this._scopeListeners.add(onMsg);
+        return () => this._scopeListeners.delete(onMsg);
+    }
+
+    /** Discover the kernel's declared, identity-granted affordances (degrades to [] honestly). */
+    async affordances(kernelUrn) {
+        try {
+            const r = await this.dispatch('kernel.affordances', kernelUrn, {});
+            return (r && (r.result || r.affordances)) || [];
+        } catch (e) { return []; }
+    }
+
+    /** Transport close — alias for disconnect (the facade calls close()). */
+    async close() { return this.disconnect(); }
 
     /** v1.3 — lookup dictionary handle for an IRI (returns null if unknown). */
     handleForIri(iri) { return this._dict.reverse.get(iri) ?? null; }
@@ -328,6 +406,12 @@ class CKClient {
                     // Additive fields; existing consumers reading only {subject,headers,data,traceId} unaffected.
                     const { kind, subjectIri, conceptType, kernel, verb } =
                         this._deriveEnvelope(eventName, msg.subject, data);
+
+                    // v1.5.0 — resolve a pending dispatch by Trace-Id; deliver granted-scope to subscribe() listeners.
+                    if (eventName === 'result' && traceId && this._pending.has(traceId)) this._resolvePending(traceId, data);
+                    if (eventName === 'result' || eventName === 'event') {
+                        for (const fn of this._scopeListeners) { try { fn(data); } catch (e) {} }
+                    }
 
                     this._emit(eventName, {
                         subject: msg.subject, headers: hdrs, data, traceId,

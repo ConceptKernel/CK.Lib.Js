@@ -1,15 +1,19 @@
 {
   "name": "@conceptkernel/cklib",
-  "version": "1.4.2",
-  "description": "CKP v3.8 NATS WSS client — JWT auth; stripped of client RDF (intermediary toward dispatch-only v1.5.0); vendored transport (no runtime CDN)",
+  "version": "1.5.0",
+  "description": "CKP v3.9 dispatch-only concept-kernel JS client (vendored, air-gapped)",
   "type": "module",
-  "main": "ck-client.js",
+  "main": "ck.js",
   "exports": {
-    ".": "./ck-client.js",
+    ".": "./ck.js",
+    "./internal/client": "./ck-client.js",
+    "./internal/store": "./ck-store.js",
     "./client": "./ck-client.js"
   },
   "files": [
+    "ck.js",
     "ck-client.js",
+    "ck-store.js",
     "vendor/",
     "README.md",
     "LICENSE",

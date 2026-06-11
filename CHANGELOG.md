@@ -2,6 +2,55 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.0] — Unreleased
+
+**Dispatch-only concept-kernel surface — aligned to CKP v3.9 Critical Isolation.** The client becomes
+dispatch-only: it authenticates and dispatches typed payloads, and nothing else crosses. There is **no
+RDF, no quad store, no SPARQL, no query engine** on the client — it addresses URNs and typed instances,
+never triples, graphs, or storage layout (`SPEC.CK-LIB-JS.v1.5.0.md` §0, §0.1). Built on the **v1.4.2
+vendored base** (`ck-client.js` imports `./vendor/*`; no runtime CDN — air-gapped, supply-chain closed).
+
+> Unreleased — no `1.5.0` tag until a built + attested `ghcr.io/conceptkernel/ck-lib-js:1.5.0` image
+> verifies (`PROVENANCE.md`). The transport flip to the `ckp.dispatch` four-tuple ingress is **deferred**
+> — v1.5.0 ships the dispatch surface over the **current per-verb wire** via the v3.8→v3.9 shim and the
+> `instance.*` aliases; the four-tuple flip lands when pgCK CI-B presents `ckp.dispatch` natively.
+
+### Added — the L2 concept-kernel surface (`ck.js`)
+- **`ck.js`** — exports `CK` / `ConceptKernel` (default + named) + `ckOn` (decorator). `CK.activate(kernel)`
+  brings a concept kernel to life (authenticate + subscribe granted scope) and returns a live
+  `ConceptKernel` handle. App code names concept kernels and concepts (URNs) — never NATS subjects,
+  codecs, handles, trace ids, quads, graph ids, or query strings.
+- **Explicit operation→verb table** maps the stable handle floor (`create`/`update`/`transition`/`link`/
+  `list`/`query`/`get`/`reach`/`verify`/`provenance`/`snapshot`/`validate`/`retire`/`propose`/`vote`/
+  `apply`) to v3.9 `instance.*` / `kernel.*` verbs. Honest-degradation fallbacks (transition→update,
+  query→instances.list, governance `{ ok:false, gov_plane_unavailable }`) now have real server backing
+  but degrade honestly until the pgCK CI gates land.
+
+### Added — the L1 typed-instance cache (`ck-store.js`)
+- **`ck-store.js`** — `CKStore` (default), a Map of `@id`/URN → typed JSONB instance fed only by dispatch
+  replies + granted-scope events. **Not an RDF store**: no quads, no 6-way hex index, no DatasetCore, no
+  SPARQL, no `toQuads`. Carries the former hex-store's *instance* projection (replace-by-id, dedup-by-seq,
+  recent ring); the *triple* projection is gone. Reactive reads via `view`/`urn`/`bind` (`CKView`,
+  `CKSubject`, `ckBind`). There is **no legacy ck-store** — this is `ck-store.js`.
+
+### Changed — `ck-client.js` gains the dispatch transport (on the v1.4.2 vendored base)
+- **`ck-client.js`** — the vendored v1.4.2 NATS WSS client gains the L0 dispatch surface the `ck.js`
+  facade composes: a constructor dispatch-state block (`_pending` / `_scopeListeners` / `_dispatchMode` /
+  `_dispatchIngress` / `_dispatchTimeout`), `disconnect()` pending/scope cleanup, Trace-Id correlation +
+  granted-scope delivery in the subscription loop, and the methods `dispatch` / `_resolvePending` /
+  `subscribe` / `affordances` / `close`. `dispatch()` carries the four-tuple ⟨verb, kernel_urn, payload,
+  identity⟩; against a pre-CI-B pgCK the transitional `v3.8` shim maps each verb to its per-verb subject
+  (removed at pgCK CI-B). The `./vendor/*` imports are unchanged — **no esm.sh, air-gapped**.
+
+### Package / bundle
+- **`package.json`** — `version` → `1.5.0`; `main` → `ck.js`; `exports`: `.` → `./ck.js`,
+  `./internal/client` → `./ck-client.js`, `./internal/store` → `./ck-store.js`, `./client` →
+  `./ck-client.js`; `files` adds `ck.js` + `ck-store.js`.
+- **`Dockerfile`** — `COPY ck.js ck-client.js ck-store.js /` + `COPY vendor /vendor`; version label →
+  `1.5.0`; header → v3.9 dispatch-only (vendored, air-gapped).
+
+---
+
 ## [1.4.2] — Unreleased
 
 **Hardening — vendored transport; no runtime CDN; air-gapped.** Closes the last supply-chain vector
