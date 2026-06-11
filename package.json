@@ -1,7 +1,7 @@
 {
   "name": "@conceptkernel/cklib",
   "version": "1.5.0",
-  "description": "CKP v3.9 dispatch-only concept-kernel JS client (vendored, air-gapped)",
+  "description": "Attach JS hosts, tools and agents to a Concept Kernel — governed verbs, sealed provenance, typed reads over NATS-WSS + JWT (CKP v3.9 dispatch-only; vendored, air-gapped)",
   "type": "module",
   "main": "ck.js",
   "exports": {
@@ -20,7 +20,7 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "echo \"Tests: see TODO.md for test plan\""
+    "test": "node --check ck.js && node --check ck-client.js && node --check ck-store.js"
   },
   "repository": {
     "type": "git",
@@ -29,23 +29,26 @@
   "keywords": [
     "conceptkernel",
     "ckp",
+    "concept-kernel",
+    "knowledge-graph",
+    "semantic",
+    "governance",
+    "provenance",
+    "agents",
+    "dispatch",
     "nats",
     "websocket",
     "kernel",
     "ontology",
     "bfo",
     "prov-o",
-    "event-driven",
-    "web-components"
+    "event-driven"
   ],
   "author": "Peter Styk <peter@styk.tv>",
   "license": "MIT",
   "homepage": "https://conceptkernel.org",
   "bugs": {
     "url": "https://github.com/ConceptKernel/CK.Lib.Js/issues"
-  },
-  "dependencies": {
-    "nats.ws": "^1.30.3"
   },
   "engines": {
     "node": ">=18.0.0"

@@ -1,76 +1,117 @@
-# CK.Lib.Js — CKP NATS WSS Client (stripped)
+# CK.Lib.Js — attach JavaScript hosts, tools and agents to a Concept Kernel
 
-**Version:** 1.4.1
-**Status:** stripped intermediary — client RDF tier removed; JWT/NATS transport unchanged
-**Package:** [@conceptkernel/cklib](https://www.npmjs.com/package/@conceptkernel/cklib)
+**Package:** [@conceptkernel/cklib](https://www.npmjs.com/package/@conceptkernel/cklib) ·
+**OCI bundle:** `ghcr.io/conceptkernel/ck-lib-js` (attested) ·
+**License:** MIT
 
-A minimal JavaScript client for the Concept Kernel Protocol (CKP). It does **one thing**: connect a
-browser to the **NATS WebSocket Secure (WSS)** message bus with **Keycloak JWT** auth, dispatch
-kernel verbs, and receive results/events. All kernel business logic (affordance resolution, identity
-verification, SHACL validation, governed writes, provenance) runs server-side in **pgCK** — the
-browser never mutates kernel state directly.
+A **concept kernel** is a governed semantic substrate: typed instances in a knowledge graph whose
+every change goes through a **sealed registry of verbs**, lands with **cryptographic provenance**
+(proof digests in a ledger), and is bounded by a **role floor** — identity comes from a verified JWT,
+never from the client. The reference substrate is [pgCK](https://github.com/styk-tv/pgCK)
+(CKP v3.9 "Critical Isolation"): the entire governance plane lives server-side in Postgres behind one
+closed door, `ckp.dispatch`.
 
-> **v1.4.1 is stripped.** The former client-side RDF tier (`CKHexStore`, the quad store,
-> `ck-rdf-bridge`/`toQuads`) and the legacy render/page modules were **removed** — no client RDF,
-> no quad surface (aligned to the v3.9 "no pgRDF on the client" direction). The single shipped module
-> is **`ck-client.js`** (`CKClient`). The forward, dispatch-only surface is tracked for **v1.5.0**.
+**CK.Lib.Js is the JavaScript attach-point.** Any JS host — a browser page, a CLI tool, a service,
+an LLM agent — connects over **NATS WebSocket** with **Keycloak JWT** auth and becomes a *governed
+participant*: it can only do what the kernel's registry declares and its identity is granted, every
+write it makes is sealed, and everything it reads is typed. No query language on the wire, no client
+RDF, no client-asserted identity — the client stays small precisely so the governance can't be bypassed.
 
----
+```javascript
+import { CK } from "@conceptkernel/cklib";
 
-## Installation
+const k = await CK.activate("pgCK");                       // attach → connected, governed handle
+
+await k.create("Task", { title: "Ship v3.9" });            // governed write → sealed (proof digest)
+const open = await k.query("Task", { lifecycle_state: { eq: "open" } });   // typed read
+console.log(k.affordances());                              // what THIS identity may do HERE
+```
+
+That is the whole consumption model: **activate a kernel, exercise its affordances.**
+
+## Why "semantically governable"
+
+| You call | The substrate guarantees |
+|---|---|
+| `k.create / update / link / retire` | registry-routed verb → SHACL-validated → **sealed** with provenance (`proof_digest`, ledger seq) |
+| `k.get / query / reach / snapshot` | **typed reads** — named, grantable affordances; no open query surface |
+| `k.verify(id)` / `k.provenance(id)` | proof-digest check / PROV chain for any instance |
+| `k.propose / vote / apply` (via `k.do`) | schema and verb-set changes go through the **governance plane**, not migrations |
+| `k.affordances()` | the kernel's declared verb surface ∩ your identity's grants |
+| identity | derived server-side from the **verified JWT** (Envoy/Keycloak); the client cannot assert it |
+
+Agents and tools attach exactly like pages — same four lines. An agent discovers what it may do
+(`affordances()`), acts only through governed verbs, and every action it takes is attributable and
+sealed. That is what makes a fleet of attached hosts *governable* rather than merely connected.
+
+## Layers (three modules, one direction)
+
+```
+ck.js        L2  CK.activate(kernel) → ConceptKernel handle (do / create / query / … / ckOn)
+ck-client.js L0  CKClient — NATS-WSS transport, JWT login/refresh, Trace-Id correlated dispatch
+ck-store.js  L1  CKStore — typed-instance cache (CKView / CKSubject / ckBind reactivity)
+```
+
+```javascript
+import { CK, ConceptKernel, ckOn } from "@conceptkernel/cklib";      // the facade (start here)
+import { CKClient } from "@conceptkernel/cklib/internal/client";     // transport only (advanced)
+import { CKStore }  from "@conceptkernel/cklib/internal/store";      // cache only (advanced)
+```
+
+`CK.activate(kernel, opts)` accepts transport options (`wssEndpoint`, `realm`, credentials…) passed
+through to `CKClient`, cache options (`replaceById`, `dedupBySeq`, `recentCapacity`), and an
+injectable `opts.transport` for tests/harnesses. `ckOn(urn)` / `wireCkOn` bind sealed-event handlers
+to URN patterns.
+
+## Hardened by construction
+
+- **Vendored transport** — `nats.ws` + `@msgpack/msgpack` are bundled under `vendor/`; **zero runtime
+  CDN fetches**, runs air-gapped.
+- **No client RDF/quad tier, no render tier** — removed in v1.4.1 (the "Critical Isolation" strip);
+  the attack surface is one transport module plus a typed cache.
+- **Attested, byte-verified artifacts** — every OCI release is CI-built from the tag, SLSA-attested,
+  and byte-listed against the tagged tree before announcement
+  (`gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:<ver> --repo ConceptKernel/CK.Lib.Js`).
+
+**Wire (current):** `input.kernel.<K>.action.<verb>` out; results correlated by `Trace-Id` on
+`result.kernel.<K>.>` (grammar-agnostic — covers both the v3.8 `.action.` shim and v3.9-clean
+subjects). The four-tuple `ckp.dispatch` ingress flip is staged separately (CE-B-2).
+
+## Release state (honest)
+
+| Channel | Version | State |
+|---|---|---|
+| OCI `ghcr.io/conceptkernel/ck-lib-js` | **`:1.4.3`** | published, attested, **byte-verified stripped** (`ck-client.js` + `vendor/`) — current pin for bundles |
+| This tree | `1.5.0` | dispatch-only surface (`ck.js` + `ck-store.js` + dispatch transport) — code-complete; tag gated on the live end-to-end verify vs pgCK v0.4.2 |
+| npm `@conceptkernel/cklib` | `1.0.0` | **legacy (CKP v3.5 era, pre-isolation) — do not use for v3.9 work**; `1.5.0` publishes at tag |
+
+Treat OCI `:1.4.1`/`:1.4.2` as `:1.4.0` (pre-strip) — see `CHANGELOG.md` `[1.4.3]` for the
+packaging-integrity disclosure.
+
+## Install
 
 ```bash
-npm install @conceptkernel/cklib
+npm install @conceptkernel/cklib        # 1.5.0 on tag; until then prefer the OCI bundle below
 ```
 
-Or consume the OCI static bundle (`ckp:static`): `ghcr.io/conceptkernel/ck-lib-js` — files land at
-image root for `COPY --from=cklib_source / dest/`.
+OCI static bundle (`ckp:static`, Shape A — files at image root for `COPY --from=cklib_source / dest/`):
 
-## Quick Start
-
-```javascript
-import { CKClient } from "@conceptkernel/cklib";          // or "/cklib/ck-client.js" from the bundle
-
-const ck = new CKClient({ kernel: "pgCK.Task" });          // realm/wssEndpoint configurable
-await ck.connect();                                         // anonymous; subscribed to result + event
-
-await ck.login("user", "pass");                             // Keycloak JWT upgrade → reconnects with JWT
-ck.send({ action: "task.create", title: "…" });            // → input.kernel.pgCK.Task.action.task.create
-
-ck.on("result", (msg) => { /* { subject, headers, data, traceId, kind, subjectIri, conceptType } */ });
-ck.on("event",  (msg) => { /* codec-transparent: msg.data is decoded (JSON or MsgPack) */ });
-ck.on("status", (s)   => { /* { connection, auth } */ });
+```dockerfile
+FROM ghcr.io/conceptkernel/ck-lib-js:1.4.3 AS cklib_source
+COPY --from=cklib_source / /app/cklib/
 ```
 
-## Runtime Requirements
+## Runtime requirements
 
-- **NATS WSS endpoint** (e.g. `wss://stream.example.com`) — native NATS with a WebSocket listener.
-- **Keycloak realm** for JWT auth (`login`/`logout`/auto-refresh; reconnects to refresh server-side ACLs).
-- **Browser:** ES2020+ (`WebSocket`, `fetch`, `Promise`, async iterators).
-- The transport loads `nats.ws` + `@msgpack/msgpack` from **esm.sh** at runtime (vendoring is tracked).
-
-**Subject grammar** (CKP v3.8, current wire):
-```
-input.kernel.<Kernel>.action.<verb>     result.kernel.<Kernel>.action.<verb>
-event.kernel.<Kernel>.<event>           event.kernel.<Kernel>.error
-```
-Identity is the **verified JWT** (Envoy/Keycloak); the client never asserts identity — pgCK derives it.
-
-## The single export
-
-```javascript
-import { CKClient } from "@conceptkernel/cklib";   // "." and "./client" both resolve to ck-client.js
-```
-
-`CKClient` — NATS WSS agent: `connect()`, `send(data)`, `login()/logout()`, `on(event, fn)`,
-per-subject dedup (`Ck-Seq`), codec-transparent decode, dictionary sync, auto-reconnect.
-
-## License
-
-MIT — see [LICENSE](LICENSE)
+- **NATS WSS endpoint** (native NATS WebSocket listener, e.g. behind Envoy at `wss://<host>/wss`).
+- **Keycloak realm** for JWT (`login()`/`logout()`, auto-refresh, reconnect re-applies server ACLs).
+- **pgCK ≥ 0.4** for the governed `instance.*` surface (legacy `task.*` aliases resolve during the
+  migration window; pre-CI-E gaps degrade honestly — empty results, never fabricated ones).
+- Browser/host: ES2020+ (`WebSocket`, `fetch`, async iterators). No other dependencies — everything
+  is vendored.
 
 ## References
 
-- **Release provenance / verification:** [`PROVENANCE.md`](./PROVENANCE.md), [`LATEST.md`](./LATEST.md)
-- **Transport contract + per-version delta:** [`COMPLIANCE.md`](./COMPLIANCE.md), [`CHANGELOG.md`](./CHANGELOG.md)
-- **npm:** https://www.npmjs.com/package/@conceptkernel/cklib · **NATS:** https://docs.nats.io
+- Provenance & verification: [`PROVENANCE.md`](./PROVENANCE.md) · [`LATEST.md`](./LATEST.md)
+- Transport contract & per-version delta: [`COMPLIANCE.md`](./COMPLIANCE.md) · [`CHANGELOG.md`](./CHANGELOG.md)
+- Substrate: [pgCK](https://github.com/styk-tv/pgCK) · Bundles: [oci-germination](https://github.com/sporaxis-com/oci-germination) · [NATS](https://docs.nats.io)
