@@ -48,35 +48,39 @@ const isUnknownAffordance = (r) => r && r.ok === false && (r.error === 'unknown_
 // `.result`-keyed ingest + typed reads fire. (Reply-envelope normalization is pgCK design-Q1; per-verb
 // adapters until pgCK confirms — see _WIP NOTIFIES.pgCK.v0.4.2.wire-contract-pin-operations.)
 const REPLY_FIELD = {
-  'instance.query': 'rows', 'instances.list': 'rows',
-  'kernels.list': 'kernels', 'instance.get': 'instances',
+  'instance.query': 'rows', 'instances.list': 'instances',
+  'kernels.list': 'kernels', 'instance.get': 'instance',
   'instance.reach': 'reached', 'concept.match': 'candidates',
   'instance.snapshot': 'instances',
 };
 
-/** Populate a canonical `.result` from pgCK's per-verb reply field so ingest + typed reads fire. */
+/** pgCK 0.4.8 read rows are envelopes (`{id,type,body,…}` from list/get) or `{id,body}` (T1 query);
+ *  flatten each to a typed instance `{'@id', …body}` so the cache keys on @id and body fields surface flat. */
+const flattenRow = (row) => (row && typeof row === 'object' && row.body && typeof row.body === 'object')
+  ? { '@id': row.id ?? row['@id'], ...row.body } : row;
+
+/** Populate a canonical `.result` from pgCK's per-verb reply field (flattening read rows) so ingest +
+ *  typed reads fire. Reply fields are pinned per-verb (pgCK Q1); see SPEC.CK-OPERATIONS §wire-contract. */
 function normalizeReply(verb, reply) {
   if (!reply || typeof reply !== 'object' || reply.result != null) return reply;
   const field = REPLY_FIELD[verb];
-  if (field && reply[field] != null) reply.result = reply[field];
+  if (field && reply[field] != null) {
+    const v = reply[field];
+    reply.result = Array.isArray(v) ? v.map(flattenRow) : flattenRow(v);
+  }
   return reply;
 }
 
-const ONT = 'https://conceptkernel.org/ontology/v3.7/';
-/** Resolve a bare CamelCase name to its v3.7 ontology IRI; pass IRIs/CURIEs through unchanged. */
-const toIri = (name) => (typeof name === 'string' && name && !name.includes('://') && !name.includes('#') && !name.includes(':'))
-  ? ONT + name : name;
-
-/** Convert the facade filter object `{key:{op:val}}` / `{key:val}` into pgCK's `[{op,key,value}]` array (keys → IRI). */
+/** Convert the facade filter object `{key:{op:val}}` / `{key:val}` into pgCK's `[{op,key,value}]` array.
+ *  Keys are SHORT localnames — pgCK's QueryShape (T1) resolves each to the type's declared property IRI. */
 function toFilterArray(filter) {
   if (Array.isArray(filter)) return filter;
   const out = [];
   for (const [key, cond] of Object.entries(filter || {})) {
     if (['order_by', 'limit', 'offset'].includes(key)) continue;
-    const k = toIri(key);
     if (cond && typeof cond === 'object' && !Array.isArray(cond)) {
-      for (const [op, value] of Object.entries(cond)) out.push({ op, key: k, value });
-    } else { out.push({ op: 'eq', key: k, value: cond }); }
+      for (const [op, value] of Object.entries(cond)) out.push({ op, key, value });
+    } else { out.push({ op: 'eq', key, value: cond }); }
   }
   return out;
 }
@@ -168,14 +172,16 @@ export class ConceptKernel {
     return this._store.get(id) ?? r?.result ?? null;
   }
 
-  /** `instance.query` with a closed-operator QueryShape; degrades to `list`/cache-filter pre-CI-E. */
+  /** `instance.query` — pgCK's derived-QueryShape read (T1, ≥0.4.8): `type` is the declared class IRI;
+   *  filter keys are short localnames the kernel resolves to its declared properties (undeclared rejected).
+   *  Degrades to the `instances.list` alias if query isn't an affordance; no client-side cache-filter. */
   async query(type, filter = {}) {
-    const payload = { type: toIri(type), filter: toFilterArray(filter) };
+    const payload = { type, filter: toFilterArray(filter) };
     if (filter && !Array.isArray(filter)) { if (filter.limit != null) payload.limit = filter.limit; if (filter.offset != null) payload.offset = filter.offset; }
     let r = await this.do(OP_VERB.query, payload);
-    if (isUnknownAffordance(r)) r = await this.do('instances.list', payload); // v3.8 legacy fallback
-    if (r && Array.isArray(r.result)) return r.result; // do() already ingested via the per-verb normalizer
-    return this._filterCache(type, filter); // last-resort client-side filter over the cache
+    if (isUnknownAffordance(r)) r = await this.do('instances.list', payload); // v3.8 alias (retires on the clock)
+    if (r && Array.isArray(r.result)) return r.result; // do() already ingested the flattened rows
+    return []; // governed read: no rows or a shape rejection → honest empty (TE-9 dropped the cache-filter)
   }
   async list(type, filter = {}) { return this.query(type, filter); }
 
@@ -185,22 +191,6 @@ export class ConceptKernel {
     if (isUnknownAffordance(r)) return [];
     if (r && Array.isArray(r.result)) { this._store.ingest(r.result); return r.result; }
     return [];
-  }
-
-  _filterCache(type, filter) {
-    const OPS = {
-      eq: (a, b) => a === b, neq: (a, b) => a !== b,
-      lt: (a, b) => a < b, lte: (a, b) => a <= b, gt: (a, b) => a > b, gte: (a, b) => a >= b,
-      contains: (a, b) => typeof a === 'string' && a.includes(b), in: (a, b) => Array.isArray(b) && b.includes(a),
-    };
-    return this._store.all().filter((inst) => {
-      if (type && (inst['@type'] ?? inst.type) !== type) return false;
-      return Object.entries(filter).every(([key, cond]) => {
-        if (['order_by', 'limit', 'offset'].includes(key)) return true;
-        if (cond && typeof cond === 'object') return Object.entries(cond).every(([op, val]) => (OPS[op] ? OPS[op](inst[key], val) : true));
-        return inst[key] === cond;
-      });
-    });
   }
 
   // ── Governance plane (gated on pgCK CI-D; honest stub until then — §4.6) ────
