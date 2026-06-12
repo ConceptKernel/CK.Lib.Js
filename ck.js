@@ -122,12 +122,17 @@ export class ConceptKernel {
   // ── Named conveniences (sugar over `do`, mapped via OP_VERB) ────────────────
 
   async create(type, body = {}) {
-    // pgCK 0.4.x routes instance.create by payload key (`task`→task.create) reading `task.{target_kernel,title,…}`.
-    // (Payload-key routing is pgCK design-Q2; if instance.create later routes by `type`, this nesting drops.)
-    const { target_kernel, ...fields } = body;
-    const w = writeResult(await this.do(OP_VERB.create, { type, task: { target_kernel: target_kernel ?? this.name, ...fields } }));
-    // pgCK 0.4.x's create reply is a receipt (no instance body). Optimistically surface the now-sealed
-    // instance for cache-first reads; the authoritative sealed event reconciles it (replace-by-id).
+    // TE-10 (v1.6.0 Typed Edge): uniform create-by-declared-type. pgCK ≥0.4.4 routes instance.create →
+    // ckp.create_typed when {type} is top-level with NO `task` key, sealing against the kernel's OWN
+    // declared SHACL shape (sh:targetClass = type; each caller field local-name → declared property IRI).
+    // `type` MUST be the kernel's declared class IRI (e.g. urn:ckp:<project>/type/Ship); the server
+    // rejects a bare name (`type_must_be_iri`). The kernel is conveyed by the handle (transport routes by
+    // kernelUrn) and the project is server-scoped (ckp.project) — so `target_kernel` is no longer sent.
+    // This drops the transient type→payload-key (`task`/`name`) nesting.
+    const { target_kernel, ...fields } = body;            // target_kernel: handle/server-scoped now — stripped, not sent
+    const w = writeResult(await this.do(OP_VERB.create, { type, ...fields }));
+    // Receipt-only reply → optimistically surface the sealed instance for cache-first reads; the
+    // authoritative sealed event reconciles it (replace-by-id).
     if (w.ok && w.id) this._store.ingest({ '@id': w.id, '@type': type, ...fields });
     return w;
   }
