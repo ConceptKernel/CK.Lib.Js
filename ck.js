@@ -87,7 +87,7 @@ function toFilterArray(filter) {
 
 /** Derive the stable write-result shape from a dispatch reply. */
 function writeResult(reply) {
-  if (!reply || reply.ok === false) return { ok: false, id: reply?.id ?? null, error: reply?.error, violations: reply?.violations };
+  if (!reply || reply.ok === false) return { ok: false, id: reply?.id ?? null, error: reply?.error, violations: reply?.violations, allowed: reply?.allowed };
   return { ok: true, id: reply.id ?? reply.result?.['@id'] ?? null, verified: reply.verified ?? !!reply.proof_digest, proof_digest: reply.proof_digest ?? null, seq: reply.seq };
 }
 
@@ -140,7 +140,9 @@ export class ConceptKernel {
     if (w.ok && w.id) this._store.ingest({ '@id': w.id, '@type': type, ...fields });
     return w;
   }
-  async update(id, patch = {}) { return writeResult(await this.do(OP_VERB.update, { id, ...patch })); }
+  /** TE-6: generic declared-shape patch (pgCK T4, ≥0.4.11) — instance.update {id, patch:{…}} → update_typed,
+   *  patched by the type's declared properties (re-sealed; undeclared keys rejected). */
+  async update(id, patch = {}) { return writeResult(await this.do(OP_VERB.update, { id, patch })); }
   async link(source, predicate, target) { return writeResult(await this.do(OP_VERB.link, { source, predicate, target: { '@id': target } })); }
   async notify(to, predicate, body = {}) { return writeResult(await this.do(OP_VERB.link, { source: to, predicate, body, event: true })); }
   async retire(id, reason) { return writeResult(await this.do(OP_VERB.retire, { id, reason })); }
@@ -148,18 +150,20 @@ export class ConceptKernel {
   async provenance(id, depth) { const r = await this.do(OP_VERB.provenance, { id, depth }); return r?.result ?? r; }
   async snapshot(scope) { const r = await this.do(OP_VERB.snapshot, scope ? { scope } : {}); return r?.result ?? []; }
 
-  /** Gated: rides `instance.update {lifecycle_state}` until pgCK CI-E-3 ships the server-side gate. */
+  /** TE-7: native sealed-map transition (pgCK T3, ≥0.4.10). The kernel reads the instance type's OWN sealed
+   *  transition map; an illegal move returns {error:'invalid_transition', from, to, allowed} — `allowed` is
+   *  surfaced so the caller can offer only the legal to_states. No client-side ride-on-update. */
   async transition(id, toState, evidence) {
-    const r = await this.do(OP_VERB.transition, { id, to_state: toState, evidence });
-    if (isUnknownAffordance(r)) return writeResult(await this.do(OP_VERB.update, { id, lifecycle_state: toState }));
-    return writeResult(r);
+    return writeResult(await this.do(OP_VERB.transition, { id, to_state: toState, evidence }));
   }
 
-  /** Validate a body before a write. Boolean-grade until pgCK CI-B-3 plumbs the ValidationReport. */
+  /** TE-5: the full SHACL ValidationReport (pgCK T5, ≥0.4.12). Send {type:<declared IRI>,…fields} flat;
+   *  validate_instance returns {conforms, violations:[…typed W3C SHACL results…]}. Surfaced verbatim — no
+   *  boolean-grade local reduction. */
   async validate(body) {
-    const r = await this.do(OP_VERB.validate, { body });
-    if (r && r.ok === false && !r.violations) return { conforms: false };
-    return { conforms: r?.conforms ?? (r?.ok !== false), violations: r?.violations };
+    const r = await this.do(OP_VERB.validate, body);
+    if (r?.ok === false) return { conforms: false, violations: r.violations ?? [], error: r.error };
+    return { conforms: r?.conforms === true, violations: r?.violations ?? [] };
   }
 
   // ── Reads without a query language (named, typed, grantable — §4.5) ─────────
