@@ -1,8 +1,10 @@
 # SPEC.CK-OPERATIONS.v1.6.0 — The Concept-Kernel Operations Layer (cross-consumer, transport-independent)
 
-**Status:** **untracked local (`_WIP`-class), pgCK-private-until-ratified.** Grounded in pgCK **v0.4.7**
-(Tier 2 complete + attested) and the **`SPEC.pgCK.ROADMAP.v0.5.0`** track set (the kernel-derived forms,
-`v0.4.8 → v0.5.0`). The two contract questions Q1/Q2 are now **PINNED** (§7).
+**Status:** **tracked on the v1.6.0 branch (2026-06-13); publish gated on pgCK ratification.** Grounded in
+pgCK **v0.4.13** (T1–T6 of the v0.5 track set all **released + attested**; `LATEST.md` at 0.4.13) — but the
+**integrated/live-verified floor is still pgCK 0.4.2** (bundle `ociger-ck-allinone:v0.7.18` / client
+`ck-lib-js:1.5.0`), so §8 carries a **two-axis** status (pgCK-released vs integrated). The two contract
+questions Q1/Q2 are **PINNED** (§7).
 This document specifies the **operations layer** that sits between pgCK's substrate spec
 (`SPEC.CKP.v3.9.md`, private) and the per-consumer specs (`SPEC.CK-LIB-JS.v1.6.0`,
 `SPEC.CK-HARNESS-CL.v3.9`). It says **what each concept-kernel operation MEANS** — independent of who
@@ -35,15 +37,28 @@ v3.9-ratification NOTIFY**, exactly as `SPEC.CK-LIB-JS.v1.5.0`'s Visibility note
 
 **Conformance language:** MUST / SHOULD / MAY per RFC 2119.
 
-> **Honesty markers (per op):** **✅ shipped + attested** (governed + sealed/typed, proven on the wire) /
-> **🔄 partial** (the verb works but a *kernel-derived* refinement is still concretion — names the v0.5
-> track) / **⏳ pending** (specified, not yet handled — honest-degrades; inherited F-A/F-C) / **❌ gap**.
-> Present tense is used only for ✅ items. The floor as of pgCK **v0.4.7** (Tier 2 complete + attested):
-> the **core five** (`create`/`query`/`get`/`verify`/`provenance`) + the **governance trio** seal
-> TYPED-SEALED; `retire` (v0.4.3), generic typed `create` (v0.4.5), governance `apply` that **mutates the
-> type** (v0.4.5), reach over **materialized link quads** (v0.4.6), and **governed query affordances**
-> (v0.4.7) are all shipped. The remaining `🔄` are kernel-derived refinements scheduled across the v0.5
-> tracks (T1…T9); `snapshot` stays `⏳` on F-A.
+> **Honesty markers — TWO axes (refreshed 2026-06-13).** A verb is "done" only when BOTH hold, so each op
+> carries two states (full table in §8):
+> - **pgCK** — released + SLSA-attested on pgCK's wire: **✅** released / **⏳** not yet handled (F-A/F-C) /
+>   **❌** gap.
+> - **Integrated** — carried in a consumable bundle AND live-verified end-to-end by a consumer: **✅ vX**
+>   live-verified at that release / **🔨 TE-n** client built-ahead, mock-only / **⏳** released-but-not-in-
+>   any-bundle (bundle-gated).
+>
+> **pgCK floor = `v0.4.13`** (GitHub-released + attested *sequentially* through 2026-06-12; `LATEST.md`
+> attested at 0.4.13). Released: the **core five** + **governance trio** (TYPED-SEALED), `retire` +
+> `validate`-gate (v0.4.3), generic typed `create` + type-mutating `apply` (v0.4.5), reach over materialized
+> quads (v0.4.6), governed query affordances (v0.4.7), **and the full v0.5 track set T1–T6** — derived
+> QueryShape (T1/v0.4.8), declared predicate set (T2/v0.4.9), per-kernel sealed transition map (T3/v0.4.10),
+> generic update patch (T4/v0.4.11), full SHACL ValidationReport (T5/v0.4.12), governed `concept.match`
+> (T6/v0.4.13). `snapshot` stays `⏳` on F-A (T8); `agent.*` session-control stays `⏳` on the registry.
+>
+> **Integrated floor = pgCK `0.4.2` / bundle `ociger-ck-allinone:v0.7.18` / client `ck-lib-js:1.5.0`** —
+> and it has **not moved since v1.5.0**. The consumable bundle still bakes pgCK **0.4.2**, so *none* of the
+> v0.5-track refinements (T1–T6) — nor even `retire`/typed-`create` (0.4.3/0.4.5) — is reachable end-to-end
+> yet. The client mirrors them **built-ahead** (TE-10→TE-5, mock-verified 27/27, commits on
+> `ck-lib-js.task.v1.6.0-typed-edge`, *not released*); they integrate the moment the bundle bumps to pgCK
+> ≥0.4.13 (#14).
 
 ---
 
@@ -137,6 +152,13 @@ read **PENDING-PIN (Q1)** it is now **pinned per-verb**.
 
 ## 3. The operation catalog
 
+> **Status note (2026-06-13):** the per-op prose below was written at pgCK **v0.4.7** and still carries
+> forward-references like `🔄 … → Tn (v0.4.x)` plus present-tense "today …" descriptions. Read these on the
+> **Integrated axis**: "today …" = the behavior of the *deployed bundle* (pgCK **0.4.2**), which is still
+> accurate. On the **pgCK axis**, every one of T1–T6 has since **released + attested** (through v0.4.13), so
+> each `🔄 → Tn` is *pgCK-done* and merely awaiting the bundle bump (#14) to integrate. The authoritative,
+> current, two-axis per-op status is the table in **§8**.
+
 Each operation below is specified as: **canonical verb** (+ aliases, incl. the `task.*`→`instance.*`
 window), **plane**, **semantics** (the fact it asserts or reads), **payload shape** (as shipped in
 0.4.2 — citing the real shape; Q1/Q2-dependent parts marked PENDING-PIN), **reply shape**,
@@ -204,7 +226,7 @@ therefore carries `verified:true` + a `proof_digest` and is independently re-ver
 - **Reply shape:** `{ ok, id, verified, proof_digest }`.
 - **Lifecycle/provenance:** sealed edge fact; proof-chained.
 
-#### `instance.transition` — sealed-state-machine lifecycle move ✅ (🔄 per-kernel map → T3)
+#### `instance.transition` — sealed-state-machine lifecycle move ✅ (T3 per-kernel sealed map released v0.4.10)
 - **Canonical verb:** `instance.transition`. **Alias:** none (new in v3.9). **Plane:** instance. **Delegation:** no.
 - **Semantics:** move an instance from one lifecycle state to another **only along an edge in the
   kernel's sealed transition map** (CKP v3.9 §4: the map is a sealed fact / I1; the gate is `_validate`
@@ -271,7 +293,7 @@ therefore carries `verified:true` + a `proof_digest` and is independently re-ver
   (`ck.js` `_filterCache`); until T1 lands it falls back to `instances.list` then the cache filter,
   honestly.
 
-#### `instance.reach` — bounded predicate traversal ✅ v0.4.6 (🔄 declared-predicate gate → T2)
+#### `instance.reach` — bounded predicate traversal ✅ v0.4.6 (T2 declared-predicate gate released v0.4.9)
 - **Plane:** instance. **Delegation:** no. **Alias:** none (new).
 - **Semantics:** bounded traversal from a URN along a predicate. `via` MUST be a **full predicate IRI**;
   `depth ≤ path_max_depth`; modifier limited to `+` transitive (CKP v3.9 §6.2). The full generality of
@@ -326,7 +348,7 @@ therefore carries `verified:true` + a `proof_digest` and is independently re-ver
 
 ### 3.D — Pre-flight (instance plane): validate
 
-#### `instance.validate` — dry-run the seal gate ✅ v0.4.3 (🔄 full report → T5)
+#### `instance.validate` — dry-run the seal gate ✅ v0.4.3 (T5 full ValidationReport released v0.4.12)
 - **Plane:** instance. **Delegation:** no. **Alias:** `ckp.validate`.
 - **Semantics:** ask the substrate whether a candidate body **conforms** to the kernel's `inShape`
   **before** a write — a dry-run of the seal gate's `_validate` step (CKP v3.9 §2.2(4)). Returns the
@@ -598,42 +620,52 @@ pgCK v0.4.5** (`ckp.create_typed`; §3.A).
 
 ---
 
-## 8. Honesty appendix — per-op status table
+## 8. Honesty appendix — per-op status table (two axes, refreshed 2026-06-13)
 
-Status reflects pgCK **v0.4.7** (Tier 2 complete + attested): the core five + governance round-trip
-TYPED-SEALED; `retire`/`validate`-gate (v0.4.3), generic typed `create` + `apply`-effect (v0.4.5), reach
-over materialized quads (v0.4.6), governed query affordances (v0.4.7) all shipped. `🔄` = the verb works
-but a kernel-derived refinement is scheduled on a v0.5 track (T1…T9); `snapshot` stays `⏳` on F-A (T8).
+A verb is "done" only when BOTH axes hold:
+- **pgCK** — released + SLSA-attested on pgCK's wire. Floor = **v0.4.13** (GitHub-released sequentially
+  through 2026-06-12; `LATEST.md` attested at 0.4.13).
+- **Integrated** — carried in a consumable bundle AND live-verified end-to-end. Floor = **pgCK 0.4.2 /
+  `ociger-ck-allinone:v0.7.18` / `ck-lib-js:1.5.0`** — unchanged since v1.5.0; the bundle still bakes 0.4.2,
+  so everything past it is pgCK-released but **not yet integrated** (bundle gate #14).
 
-| Op (canonical verb) | Plane | Status | Delegated | Evidence / note |
-|---|---|---|---|---|
-| `instance.create` | instance | ✅ v0.4.5 (generic typed) | no | uniform `{type,…fields}` routed vs the declared shape (`ckp.create_typed`, s38); Q2 pinned |
-| `instance.update` | instance | ✅ v0.4.3 (🔄 generic patch T4) | no | full patch + `->` type-preserve (fidelity fixed); generic per-declared-shape patch = T4 |
-| `instance.link` | instance | ✅ (🔄 declared-pred T2) | no | predicate registry-checked; `{"@id"}` refs; declared predicate set = T2 |
-| `instance.transition` | instance | ✅ (🔄 per-kernel map T3) | no | `from='planned'` after v0.4.3 namespace reconcile (s37); per-kernel sealed map = T3 |
-| `instance.retire` | instance | ✅ v0.4.3 | no | `ckp.retire` + registry INSERT (s35) |
-| `instance.get` | instance | ✅ | no | field `.instance`/`.instances` (pinned per-verb) |
-| `instance.query` | instance | ✅ (🔄 QueryShape T1) | no | `rows:[{id,body}]`; `[{op,key,value}]` IRI filter; derived QueryShape (declared keys) = T1 |
-| `instance.reach` | instance | ✅ v0.4.6 (🔄 declared-pred T2) | no | traverses materialized link quads (`ckp.materialize_edge`, s40); declared `via` gate = T2 |
-| `instance.snapshot` | instance | ⏳ F-A (T8) | no | `snapshot_not_granted` (no injected requester); gate shipped, needs F-A → T8 |
-| `instance.verify` | instance | ✅ | no | core proof check |
-| `instance.provenance` | instance | ✅ | no | `proof.digest=7bc5802d…`, `ledger:[2]`; fields `.body`/`.proof`/`.ledger` (pinned) |
-| `instance.validate` | instance | ✅ v0.4.3 (🔄 full report T5) | no | required-props gate `validate ⟺ seal` (`ckp.validate_instance`, s37); full `ValidationReport` = T5 |
-| `notify` (= `instance.link`+event) | instance | ✅ | no | sugar over `link`; `{p,o}`→`link` shape is a harness pin |
-| `kernel.propose_change` | governance | ✅ | no | `proposal_iri:proposal-…` |
-| `kernel.vote` | governance | ✅ | no | `quorum_met:true, approvals:1` |
-| `kernel.apply` | governance | ✅ (effect live v0.4.5) | no | `state:"applied", epoch:2`; **mutates the type** (`_graph_apply`, s39); `applied.graph_changed` |
-| `affordances` | instance | ✅ name (🔄 projection F-A) | no | canonical name `affordances` confirmed; per-identity ∩ grants projection = F-A/T8 |
-| `concept.match` | instance | ✅ mechanism v0.4.7 (🔄 built-in T6) | no | governed query affordances shipped (`run_query_affordance`, s41); converting built-in = T6 |
-| `agent.execute` | agent | ✅ wire / ⏳ registry | **yes** | typed-facts round-trip live; registry row pending (G6) |
-| `agent.presence` / `agent.say` | agent | ✅ wire / ⏳ registry | **yes** | relayed; registry row pending |
-| `agent.steer` / `agent.interrupt` / `agent.tool_approve` / `agent.close` | agent | ⏳ | **yes** | session control; on the dispatcher bridge + ToolCall map (G3/G4) |
+Integrated states: **✅ vX** live-verified at that release · **🔨 TE-n** client built-ahead, mock-only
+(commits on `ck-lib-js.task.v1.6.0-typed-edge`, not released) · **⏳** released-but-bundle-gated / F-A·F-C.
 
-**Legend:** ✅ = governed + sealed/typed on the wire, proven live (pgCK ≤ v0.4.7) · 🔄 = the verb works
-but a kernel-derived refinement is scheduled on a v0.5 track (T1…T9) · ⏳ = inherited prerequisite
-(F-A/F-C), honest-degrades · ❌ = absent (none here). Q1 (per-verb fields) / Q2 (uniform typed create)
-are **pinned** (§7); the §3 shapes are the ratified contract.
+| Op (canonical verb) | pgCK | Integrated | Evidence / note |
+|---|---|---|---|
+| `instance.create` | ✅ v0.4.5 typed | 🔨 TE-10 (legacy form ✅ v1.5.0) | uniform `{type,…}`→`create_typed` (s38); Q2 pinned |
+| `instance.update` | ✅ v0.4.11 (T4) | 🔨 TE-6 | `{id,patch:{…}}`→`update_typed`; declared-shape patch, undeclared rejected |
+| `instance.link` | ✅ v0.4.9 (T2) | ✅ v1.5.0 (client predicate-agnostic, TE-8) | declared predicate set; `{"@id"}` refs |
+| `instance.transition` | ✅ v0.4.10 (T3) | 🔨 TE-7 | native per-kernel sealed map (s44); illegal move surfaces `allowed` |
+| `instance.retire` | ✅ v0.4.3 | ⏳ bundle-gated | `ckp.retire`+registry (s35); absent from the 0.4.2 bundle |
+| `instance.get` | ✅ (field `.instance`) | 🔨 TE-9 (reply-field fix) | v1.5.0 mapped the wrong field (`instances`); TE-9 corrects to `.instance` |
+| `instance.query` | ✅ v0.4.8 (T1) | 🔨 TE-9 (legacy read ✅ v1.5.0) | declared QueryShape, short keys, `rows:[{id,body}]` |
+| `instance.reach` | ✅ v0.4.9 (T2) | ⏳ bundle-gated | materialized quads (s40); 0.4.6+ absent from the 0.4.2 bundle |
+| `instance.snapshot` | ⏳ F-A (T8) | ⏳ F-A | `snapshot_not_granted` — no injected requester |
+| `instance.verify` | ✅ | ✅ v1.5.0 | core proof check (live) |
+| `instance.provenance` | ✅ | ✅ v1.5.0 | proof-chain projection (live); fields `.body`/`.proof`/`.ledger` pinned |
+| `instance.validate` | ✅ v0.4.12 (T5) | 🔨 TE-5 (gate shipped v0.4.3) | full SHACL `ValidationReport`; client surfaces verbatim |
+| `notify` (=`link`+event) | ✅ | 🔨 TE-8 (base ✅ v1.5.0) | sugar over `link`; declared predicate |
+| `kernel.propose_change` | ✅ | ✅ v1.5.0 | governance trio round-tripped live (epoch 1→2) |
+| `kernel.vote` | ✅ | ✅ v1.5.0 | `quorum_met:true, approvals:1` |
+| `kernel.apply` | ✅ effect v0.4.5 | ✅ v1.5.0 (epoch); 🔨 type-mutation | `_graph_apply` mutates the type (s39); v1.5.0 verified the epoch bump on 0.4.2 |
+| `affordances` | ✅ name | ✅ v1.5.0 (name); ⏳ projection | per-identity ∩ grants projection = F-A/T8 |
+| `concept.match` | ✅ v0.4.13 (T6) | ⏳ TE-4 not built | governed query affordance (s41); client adoption pending |
+| `agent.execute` | ✅ wire / ⏳ registry | ⏳ | **delegated**; typed-facts round-trip live; registry row pending (G6) |
+| `agent.presence` / `agent.say` | ✅ wire / ⏳ registry | ⏳ | **delegated**; relayed; registry row pending |
+| `agent.steer`/`interrupt`/`tool_approve`/`close` | ⏳ | ⏳ | **delegated**; session control on the bridge + ToolCall map (G3/G4) |
+
+**Legend:** pgCK ✅ = released + attested on pgCK's wire · ⏳ = not yet handled (F-A/F-C) · ❌ = gap (none).
+Integrated ✅ vX = live-verified at that release · 🔨 TE-n = client built-ahead, mock-only · ⏳ = released-
+but-bundle-gated. Q1 (per-verb fields) / Q2 (uniform typed create) are **pinned** (§7); the §3 shapes are
+the ratified contract.
+
+**Bottom line.** pgCK has released the *entire* T1–T6 typed-edge surface (through v0.4.13, attested). The
+client mirrors it built-ahead (TE-10→TE-5, 27/27 mock). **Nothing past pgCK 0.4.2 is integrated or
+live-verified** — the single gate is the bundle bump (#14). When `ociger-ck-allinone` carries pgCK ≥0.4.13,
+one `verify-v160` pass flips the 🔨/⏳ Integrated column to ✅ and v1.6.0 becomes tag-ready.
 
 ---
 
-*End of SPEC.CK-OPERATIONS.v1.6.0.md (untracked local, pgCK-private-until-ratified; grounded in pgCK v0.4.7 + the SPEC.pgCK.ROADMAP.v0.5.0 track set; Q1/Q2 pinned).*
+*End of SPEC.CK-OPERATIONS.v1.6.0.md (tracked on the v1.6.0 branch from 2026-06-13; publish gated on pgCK ratification; grounded in pgCK v0.4.13 + the SPEC.pgCK.ROADMAP.v0.5.0 track set T1–T6 released; integration gated on the bundle bump #14; Q1/Q2 pinned).*
