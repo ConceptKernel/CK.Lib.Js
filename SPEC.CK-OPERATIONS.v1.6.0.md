@@ -625,27 +625,31 @@ pgCK v0.4.5** (`ckp.create_typed`; §3.A).
 A verb is "done" only when BOTH axes hold:
 - **pgCK** — released + SLSA-attested on pgCK's wire. Floor = **v0.4.13** (GitHub-released sequentially
   through 2026-06-12; `LATEST.md` attested at 0.4.13).
-- **Integrated** — carried in a consumable bundle AND live-verified end-to-end. Floor = **pgCK 0.4.2 /
-  `ociger-ck-allinone:v0.7.18` / `ck-lib-js:1.5.0`** — unchanged since v1.5.0; the bundle still bakes 0.4.2,
-  so everything past it is pgCK-released but **not yet integrated** (bundle gate #14).
+- **Integrated** — carried in a consumable bundle AND live-verified end-to-end. The bump landed:
+  **`ociger-ck-allinone:v0.7.19` bakes pgCK 0.4.13** (#14 resolved). verify-v160 (2026-06-14) ran the
+  client's TE forms live — they round-trip — BUT the demo's SHACL shapes are sealed into
+  `urn:ckp:demo/kernel/board` while every pgCK shape-op reads `urn:ckp:demo/kernel/ck` (empty), so
+  declared-shape **enforcement is vacuous** (NOTIFY: shape-graph-mismatch). Floor is now **form-live,
+  enforcement-gated**.
 
-Integrated states: **✅ vX** live-verified at that release · **🔨 TE-n** client built-ahead, mock-only
-(commits on `ck-lib-js.task.v1.6.0-typed-edge`, not released) · **⏳** released-but-bundle-gated / F-A·F-C.
+Integrated states: **✅ vX** fully live-verified (form + enforcement) · **◑ form-live** the wire form
+round-trips live at v0.7.19/0.4.13 but declared-shape enforcement is vacuous (shape-graph mismatch) ·
+**🔨 TE-n** built-ahead, mock-only · **⏳** blocked (pgCK substrate / F-A).
 
 | Op (canonical verb) | pgCK | Integrated | Evidence / note |
 |---|---|---|---|
-| `instance.create` | ✅ v0.4.5 typed | 🔨 TE-10 (legacy form ✅ v1.5.0) | uniform `{type,…}`→`create_typed` (s38); Q2 pinned |
-| `instance.update` | ✅ v0.4.11 (T4) | 🔨 TE-6 | `{id,patch:{…}}`→`update_typed`; declared-shape patch, undeclared rejected |
-| `instance.link` | ✅ v0.4.9 (T2) | ✅ v1.5.0 (client predicate-agnostic, TE-8) | declared predicate set; `{"@id"}` refs |
-| `instance.transition` | ✅ v0.4.10 (T3) | 🔨 TE-7 | native per-kernel sealed map (s44); illegal move surfaces `allowed` |
+| `instance.create` | ✅ v0.4.5 typed | ◑ form-live v0.7.19 (TE-10) | flat `{type,…}` **seals** live (verified:true); gate vacuous on demo (shape-graph) |
+| `instance.update` | ✅ v0.4.11 (T4) | ◑ form-live v0.7.19 (TE-6) | `{id,patch:{…}}` **re-seals** live; undeclared-key rejection vacuous on demo (shape-graph) |
+| `instance.link` | ✅ v0.4.9 (T2) | ◑ seals live v0.7.19 (TE-8) | **target = plain IRI** (fixed; `{'@id'}` turtle-errored); seals but `reachable:false` → reach (NOTIFY) |
+| `instance.transition` | ✅ v0.4.10 (T3) | ✅ live v0.7.19 (TE-7) | `planned→in_progress` ok (config-map fallback; per-kernel map unset on demo); surfaces `allowed` |
 | `instance.retire` | ✅ v0.4.3 | ⏳ bundle-gated | `ckp.retire`+registry (s35); absent from the 0.4.2 bundle |
 | `instance.get` | ✅ (field `.instance`) | 🔨 TE-9 (reply-field fix) | v1.5.0 mapped the wrong field (`instances`); TE-9 corrects to `.instance` |
-| `instance.query` | ✅ v0.4.8 (T1) | 🔨 TE-9 (legacy read ✅ v1.5.0) | declared QueryShape, short keys, `rows:[{id,body}]` |
-| `instance.reach` | ✅ v0.4.9 (T2) | ⏳ bundle-gated | materialized quads (s40); 0.4.6+ absent from the 0.4.2 bundle |
+| `instance.query` | ✅ v0.4.8 (T1) | ◑ form-live v0.7.19 (TE-9) | `rows:[{id,body}]` flatten live; short-key resolve + undeclared-reject vacuous on demo (shape-graph) |
+| `instance.reach` | ✅ v0.4.9 (T2) | ⏳ pgCK | `reach{from:bare-id}` → sparql invalid-IRI; `link` returns `reachable:false` — round-trip broken (NOTIFY) |
 | `instance.snapshot` | ⏳ F-A (T8) | ⏳ F-A | `snapshot_not_granted` — no injected requester |
 | `instance.verify` | ✅ | ✅ v1.5.0 | core proof check (live) |
 | `instance.provenance` | ✅ | ✅ v1.5.0 | proof-chain projection (live); fields `.body`/`.proof`/`.ledger` pinned |
-| `instance.validate` | ✅ v0.4.12 (T5) | 🔨 TE-5 (gate shipped v0.4.3) | full SHACL `ValidationReport`; client surfaces verbatim |
+| `instance.validate` | ✅ v0.4.12 (T5) | ◑ form-live v0.7.19 (TE-5) | full `ValidationReport` surfaced live; vacuous (`shapes_triples:0`) on demo (shape-graph) |
 | `notify` (=`link`+event) | ✅ | 🔨 TE-8 (base ✅ v1.5.0) | sugar over `link`; declared predicate |
 | `kernel.propose_change` | ✅ | ✅ v1.5.0 | governance trio round-tripped live (epoch 1→2) |
 | `kernel.vote` | ✅ | ✅ v1.5.0 | `quorum_met:true, approvals:1` |
@@ -656,16 +660,20 @@ Integrated states: **✅ vX** live-verified at that release · **🔨 TE-n** cli
 | `agent.presence` / `agent.say` | ✅ wire / ⏳ registry | ⏳ | **delegated**; relayed; registry row pending |
 | `agent.steer`/`interrupt`/`tool_approve`/`close` | ⏳ | ⏳ | **delegated**; session control on the bridge + ToolCall map (G3/G4) |
 
-**Legend:** pgCK ✅ = released + attested on pgCK's wire · ⏳ = not yet handled (F-A/F-C) · ❌ = gap (none).
-Integrated ✅ vX = live-verified at that release · 🔨 TE-n = client built-ahead, mock-only · ⏳ = released-
-but-bundle-gated. Q1 (per-verb fields) / Q2 (uniform typed create) are **pinned** (§7); the §3 shapes are
-the ratified contract.
+**Legend:** pgCK ✅ = released + attested · ⏳ = not yet handled · ❌ = gap (none). Integrated ✅ = fully
+live-verified · ◑ = form-live at v0.7.19/0.4.13, enforcement vacuous (shape-graph mismatch, NOTIFY) · 🔨 =
+built-ahead/mock · ⏳ = pgCK-substrate / F-A blocked. Q1/Q2 **pinned** (§7); the §3 shapes are the ratified
+contract.
 
-**Bottom line.** pgCK has released the *entire* T1–T6 typed-edge surface (through v0.4.13, attested). The
-client mirrors it built-ahead (TE-10→TE-5, 27/27 mock). **Nothing past pgCK 0.4.2 is integrated or
-live-verified** — the single gate is the bundle bump (#14). When `ociger-ck-allinone` carries pgCK ≥0.4.13,
-one `verify-v160` pass flips the 🔨/⏳ Integrated column to ✅ and v1.6.0 becomes tag-ready.
+**Bottom line (verify-v160, 2026-06-14).** The bundle bump landed — `ociger-ck-allinone:v0.7.19` bakes
+pgCK 0.4.13 (#14 resolved). Against it the client's TE **forms are live-verified**: typed `create` seals,
+`query` rows flatten, `transition`/`update {id,patch}`/`validate` round-trip, `link` seals (target-shape
+fixed). **But declared-shape *enforcement* is vacuous** on the demo: its SHACL shapes are in
+`urn:ckp:demo/kernel/board` while pgCK reads `urn:ckp:demo/kernel/ck` (empty) — so short-key resolution,
+undeclared-key rejection, and real validation all no-op (NOTIFY: shape-graph-mismatch; + pgCK reach/link
+round-trip). **v1.6.0 is form-ready, not enforcement-ready**: once the shapes land in the read graph the ◑
+rows flip to ✅ with no client change, and v1.6.0 is tag-ready.
 
 ---
 
-*End of SPEC.CK-OPERATIONS.v1.6.0.md (tracked on the v1.6.0 branch from 2026-06-13; publish gated on pgCK ratification; grounded in pgCK v0.4.13 + the SPEC.pgCK.ROADMAP.v0.5.0 track set T1–T6 released; integration gated on the bundle bump #14; Q1/Q2 pinned).*
+*End of SPEC.CK-OPERATIONS.v1.6.0.md (tracked on the v1.6.0 branch; publish gated on pgCK ratification; grounded in pgCK v0.4.13, live-verified vs ociger v0.7.19 — forms ✅, enforcement gated on the shape-graph fix; Q1/Q2 pinned).*
