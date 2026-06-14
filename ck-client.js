@@ -125,6 +125,10 @@ class CKClient {
         this._dispatchMode = config.dispatchMode || 'v3.8';      // v3.8 subject-grammar shim until pgCK CI-B
         this._dispatchIngress = config.dispatchIngress || 'ckp.dispatch';
         this._dispatchTimeout = config.dispatchTimeout || 15000;
+        // Governance door: governed verbs (instance.*/kernel.*/instances.*/affordances/concept.match) are
+        // answered HERE (input.kernel.<gov>.action.<verb> → result.kernel.<gov>.<verb>), not on the target
+        // kernel's subject. Only DELEGATED agent.* verbs ride the target kernel (the harness). Mirrors ck-bus.
+        this._gov = config.gov || 'pgCK';
     }
 
     // ── Public API ───────────────────────────────────────────────────────
@@ -266,8 +270,11 @@ class CKClient {
             subject = this._dispatchIngress;                   // ckp.dispatch closed ingress
             body = { verb, kernel_urn: kernelUrn, payload };   // identity is server-derived (TR-02)
         } else {
-            const name = (kernelUrn || '').replace('ckp://Kernel#', '') || this.kernel;
-            subject = `input.kernel.${name}.action.${verb}`;   // v3.8 subject-grammar shim (removed at CI-B)
+            const target = (kernelUrn || '').replace('ckp://Kernel#', '') || this.kernel;
+            // Governed verbs are answered on the GOV door; only delegated agent.* verbs ride the target
+            // kernel's subject (the harness). The target kernel travels in the Ck-Kernel header (set above).
+            const delegated = /^agent\./.test(verb) || verb === 'execute' || verb === 'presence' || verb === 'say';
+            subject = `input.kernel.${delegated ? target : this._gov}.action.${verb}`;   // v3.8 subject-grammar shim (removed at CI-B)
             body = { action: verb, ...payload };
         }
 
@@ -364,6 +371,9 @@ class CKClient {
         if (this._subscribeChannels.includes('result')) {
             this._sub(this.topics.result,     'result');
             this._sub(this.topics.resultLong, 'result');
+            // Governed-verb replies arrive on the gov door's result subject — subscribe it when the
+            // activated kernel isn't the gov kernel, so instance.*/kernel.* dispatches correlate (G5a).
+            if (this._gov && this._gov !== this.kernel) this._sub(`result.kernel.${this._gov}.>`, 'result');
         }
         // event channel (short + long forms)
         if (this._subscribeChannels.includes('event')) {
