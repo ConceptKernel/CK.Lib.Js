@@ -143,7 +143,9 @@ export class ConceptKernel {
   /** TE-6: generic declared-shape patch (pgCK T4, ≥0.4.11) — instance.update {id, patch:{…}} → update_typed,
    *  patched by the type's declared properties (re-sealed; undeclared keys rejected). */
   async update(id, patch = {}) { return writeResult(await this.do(OP_VERB.update, { id, patch })); }
-  async link(source, predicate, target) { return writeResult(await this.do(OP_VERB.link, { source, predicate, target: { '@id': target } })); }
+  // TE-8 (live-verified vs pgCK 0.4.13): `target` is a PLAIN IRI — edge.create puts it straight into the
+  // materialized turtle, so an {'@id':…} wrapper turtle-parse-errors. `predicate` must be a declared IRI.
+  async link(source, predicate, target) { return writeResult(await this.do(OP_VERB.link, { source, predicate, target })); }
   async notify(to, predicate, body = {}) { return writeResult(await this.do(OP_VERB.link, { source: to, predicate, body, event: true })); }
   async retire(id, reason) { return writeResult(await this.do(OP_VERB.retire, { id, reason })); }
   async verify(id) { const r = await this.do(OP_VERB.verify, { id }); return { verified: r?.verified ?? !!r?.proof_digest, proof_digest: r?.proof_digest ?? null, seq: r?.seq }; }
