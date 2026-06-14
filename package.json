@@ -20,7 +20,8 @@
     "CHANGELOG.md"
   ],
   "scripts": {
-    "test": "node --check ck.js && node --check ck-client.js && node --check ck-store.js"
+    "check": "node --check ck.js && node --check ck-client.js && node --check ck-store.js",
+    "test": "npm run check && node tests/smoke-ck.mjs && node tests/smoke-ck-store.mjs && node tests/smoke-ck-client.mjs"
   },
   "repository": {
     "type": "git",
