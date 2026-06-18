@@ -4,6 +4,13 @@ All notable changes to CK.Lib.Js are documented here.
 
 ## [1.5.1] — 2026-06-18
 
+> **✅ RELEASED 2026-06-18 — attested-success.** CI run `27790532785` (publish in 50s) →
+> `ghcr.io/conceptkernel/ck-lib-js:1.5.1`; `gh attestation verify` exit 0; `LATEST.md` advanced to v1.5.1;
+> GitHub Release live (21:31:20Z). **Byte-verified:** bundle = exactly `ck.js` + `ck-client.js` +
+> `ck-store.js` + `vendor/{nats.ws,msgpack}.js` + README/LICENSE (no `tests/`, no `SPEC.*`). Terminal
+> status logged; the next tag is unblocked (PROVENANCE Rule 3/4). **Forms proven real-path** — see
+> `tests/real-path/`; the disclosed gaps (BLK-1 enforcement, FIX-C reach) are server/bundle-side, v1.6.0.
+
 First release of the **typed-edge forms** — kernel-derived typed operations mirroring pgCK v0.5 tracks
 T1–T6 — plus client bug fixes and the canonical NATS wire-contract spec. Requires **pgCK ≥ 0.4.13**.
 
