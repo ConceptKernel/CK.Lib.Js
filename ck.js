@@ -40,6 +40,7 @@ const OP_VERB = {
   propose: 'kernel.propose_change',
   vote: 'kernel.vote',
   apply: 'kernel.apply',
+  match: 'concept.match',
 };
 
 const isUnknownAffordance = (r) => r && r.ok === false && (r.error === 'unknown_affordance' || r.error === 'unknown_verb');
@@ -146,11 +147,14 @@ export class ConceptKernel {
   // TE-8 (live-verified vs pgCK 0.4.13): `target` is a PLAIN IRI — edge.create puts it straight into the
   // materialized turtle, so an {'@id':…} wrapper turtle-parse-errors. `predicate` must be a declared IRI.
   async link(source, predicate, target) { return writeResult(await this.do(OP_VERB.link, { source, predicate, target })); }
-  async notify(to, predicate, body = {}) { return writeResult(await this.do(OP_VERB.link, { source: to, predicate, body, event: true })); }
+  async notify(from, predicate, to, body = {}) { return writeResult(await this.do(OP_VERB.link, { source: from, predicate, target: to, body, event: true })); }
   async retire(id, reason) { return writeResult(await this.do(OP_VERB.retire, { id, reason })); }
   async verify(id) { const r = await this.do(OP_VERB.verify, { id }); return { verified: r?.verified ?? !!r?.proof_digest, proof_digest: r?.proof_digest ?? null, seq: r?.seq }; }
   async provenance(id, depth) { const r = await this.do(OP_VERB.provenance, { id, depth }); return r?.result ?? r; }
   async snapshot(scope) { const r = await this.do(OP_VERB.snapshot, scope ? { scope } : {}); return r?.result ?? []; }
+  /** TE-4: governed concept.match (pgCK T6, ≥0.4.13) — full-text or token match against the kernel's
+   *  declared concept index; returns the `candidates` array (REPLY_FIELD normalised to `.result`). */
+  async match(term) { const r = await this.do(OP_VERB.match, { term }); return r?.result ?? []; }
 
   /** TE-7: native sealed-map transition (pgCK T3, ≥0.4.10). The kernel reads the instance type's OWN sealed
    *  transition map; an illegal move returns {error:'invalid_transition', from, to, allowed} — `allowed` is
@@ -261,7 +265,7 @@ export const CK = {
     let affordances = [];
     try {
       if (typeof transport.affordances === 'function') affordances = await transport.affordances(kernelUrn);
-      else { const r = await transport.dispatch('kernel.affordances', kernelUrn, {}); affordances = (r && r.result) || []; }
+      else { const r = await transport.dispatch('affordances', kernelUrn, {}); affordances = (r && r.result) || []; }
     } catch { affordances = []; }
 
     const handle = new ConceptKernel(kernelUrn, transport, store, affordances, opts);
