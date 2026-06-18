@@ -1,26 +1,34 @@
-> **FUTURE — post-v1.5.1.** This is the single post-v1.5.1 roadmap.
-> Current shipped: **v1.5.0**. In progress: **v1.5.1** (`SPEC.ROADMAP.v1.5.1.CHECKLIST.md`).
-> Nothing here is released until its version tags and attests.
+> **CHECKLIST for the v1.6.0 milestone — but v1.6.0 is NOT announced, and not in sight.**
+> Every item below is delivered **progressively, via sequential 1.5.x releases** (1.5.1 shipped; then
+> 1.5.2, 1.5.3, …). **"v1.6.0" is the label for the milestone** reached when its section is fully checked —
+> it is **NOT a scheduled tag.** Until then, **1.5.x is the way forward**: each item ships in whatever
+> 1.5.x release real-path-proves it (the v1.5.1 discipline). v1.6.0 is announced only once its checklist
+> reads all `[x]`. Current shipped: **v1.5.1** (2026-06-18). Next: **v1.5.2**.
 
 # SPEC.ROADMAP.v1.6.0-FUTURE.CHECKLIST
 
-All work that ships **after v1.5.1**. Organised by planned version; version boundaries may shift
-as pgCK tracks land. The rule: a version can only tag when its pgCK gate is attested and the
-dependent code is live-verified.
+The progressive checklist of all post-v1.5.1 work. Check `[ ]` → `[x]` as a **1.5.x release** ships and
+real-path-proves each item (no item is "done" until released + verified). The milestone labels (v1.6.0,
+v1.7.0, v2.0) only **group items by theme** — they are **not release dates**; the only release vehicle
+is **1.5.x**.
 
-**Predecessor:** `SPEC.ROADMAP.v1.5.1.CHECKLIST.md`
+**Predecessor:** `SPEC.ROADMAP.v1.5.1.CHECKLIST.md` (v1.5.1 SHIPPED 2026-06-18)
 **Date:** 2026-06-18
 
 ---
 
-## Version map
+## Milestone map — delivered via sequential 1.5.x (these are NOT scheduled tags)
 
-| Version | Trigger | Key delivery |
+| Milestone (label only) | Gate | Checklist items |
 |---|---|---|
-| **v1.5.1** *(in progress)* | TE-10→TE-4 + FIX-A/B/G5a | Typed-edge forms; wire spec |
-| **v1.6.0** | pgCK v0.5.0 (T8+T9) + BLK-1 + FIX-C | TE-3 snapshot/F-A; TE-2 session routing; enforcement non-vacuous |
-| **v1.7.0** | CE-B-2 + alias retirement + Node binding | `ckp.dispatch` default; retire `task.*`; Node/harness surface |
-| **v2.0** | Major cleanup | Drop short-form topics, `./client` subpath, legacy aliases |
+| ✅ **v1.5.1** | TE-10→TE-4 + FIX-A/B/G5a | Typed-edge forms; wire spec — **SHIPPED 2026-06-18** |
+| **v1.6.0** *(target — unannounced, not in sight)* | pgCK T8+T9 + BLK-1 + FIX-C | TE-3 snapshot/F-A; TE-2 session routing; enforcement non-vacuous |
+| v1.7.0 *(later — parking lot)* | CE-B-2 + alias retirement + Node | `ckp.dispatch` default; retire `task.*`; Node surface |
+| v2.0 *(later — parking lot)* | major cleanup | drop short-form topics, `./client` subpath, legacy aliases |
+
+**Release vehicle: 1.5.x only.** Each checklist item lands in the next 1.5.x that proves it real-path.
+v1.6.0 is announced only when its section reads all `[x]` (re-tag/alias the last green 1.5.x then) —
+there is **no v1.6.0 tag scheduled** before that.
 
 ---
 
@@ -28,15 +36,15 @@ dependent code is live-verified.
 
 Gated on: **pgCK T8 (v0.4.15)** + **pgCK T9 (v0.4.16)** + **BLK-1** resolved + **FIX-C** resolved.
 
-`⏳` blocked · `⬜` not started
+`[ ]` not delivered · `[x]` delivered in a 1.5.x (note which) — check each as its 1.5.x release ships + real-path-proves it.
 
 | ID | Task | Depends on | Status |
 |---|---|---|---|
-| **TE-3** | `instance.snapshot` — supply verified JWT; render granted bodies; drop `snapshot_not_granted` degrade | pgCK T8 · v0.4.15 (F-A) + SPORE Phases 0–1 | ⏳ gated |
-| **TE-2** | Per-session result routing on `session.{project}.{id}` — subscribe below L2; correlate to dispatch | pgCK T9 · v0.4.16 (F-C) | ⏳ gated |
-| **FIX-C** | `reach` — `from` must be a full IRI; bare instance-id triggers pgCK SPARQL error | pgCK NOTIFY response | ⏳ awaiting pgCK |
-| **BLK-1** | Demo enforcement non-vacuous — shapes must be in `urn:ckp:<proj>/kernel/ck` | oci-germination v0.7.20 (pgCK reconcile first) | ⏳ awaiting oci-germination RESPONSE to pgCK reconcile |
-| **TE-SHIP** ⛴ | Ship v1.6.0 — build+attest `ck-lib-js:1.6.0` | All above + pgCK v0.5.0 | ⏳ blocked |
+| **TE-3** | `instance.snapshot` — supply verified JWT; render granted bodies; drop `snapshot_not_granted` degrade | pgCK T8 · v0.4.15 (F-A) + SPORE Phases 0–1 | `[ ]` gated (pgCK T8) |
+| **TE-2** | Per-session result routing on `session.{project}.{id}` — subscribe below L2; correlate to dispatch | pgCK T9 · v0.4.16 (F-C) | `[ ]` gated (pgCK T9) |
+| **FIX-C** | `reach` — `from` must be a full IRI; bare instance-id triggers pgCK SPARQL error | pgCK NOTIFY response | `[ ]` awaiting pgCK |
+| **BLK-1** | Demo enforcement non-vacuous — shapes must be in `urn:ckp:<proj>/kernel/ck` | oci-germination v0.7.20 (pgCK reconcile first) | `[ ]` awaiting oci-germination |
+| **MILESTONE** | **Announce v1.6.0** — when every item above is `[x]`, the accumulated 1.5.x state *is* v1.6.0; re-tag/announce then. No v1.6.0 tag before that. | all above `[x]` | `[ ]` |
 
 ---
 

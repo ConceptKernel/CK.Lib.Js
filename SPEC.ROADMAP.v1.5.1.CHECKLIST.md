@@ -9,11 +9,14 @@ Roadmap to **CK.Lib.Js v1.5.1** — typed-edge forms built-ahead + bug fixes + c
 
 ---
 
-> **Status — v1.5.1 built, not yet released.**
+> **Status — v1.5.1 SHIPPED 2026-06-18.**
 >
-> v1.5.0 is SHIPPED (`ghcr.io/conceptkernel/ck-lib-js:1.5.0`, attested, byte-verified, 2026-06-11).
-> TE-10→TE-4 were built-ahead on the task branch and are in the current codebase. Three client
-> bugs fixed this session. Wire spec written. Two external blockers open, neither blocks this tag.
+> `ghcr.io/conceptkernel/ck-lib-js:1.5.1`, attested (`gh attestation verify` exit 0), byte-verified,
+> `LATEST.md` advanced, GitHub Release live. TE-10→TE-4 + FIX-A/B + G5a — all **proven real-path**
+> (browser → wss → relay → pgCK 0.4.13; `tests/real-path/`), not mock/psql. Two external blockers
+> (BLK-1, FIX-C) remain open and **disclosed** — neither is client code; both carried in
+> `SPEC.ROADMAP.v1.6.0-FUTURE.CHECKLIST.md`. The path forward is **1.5.x** (next: v1.5.2); v1.6.0 is a
+> checklist milestone, not an announced release.
 
 ---
 
