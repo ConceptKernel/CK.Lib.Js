@@ -5,13 +5,8 @@ ref-*
 # other repos, alignment docs). Public repo: keep working state out of history.
 _WIP/
 
-# SPEC.* are working/governance docs — kept LOCAL by default (maintainer directive 2026-06-11).
-# Distributed artifacts (npm/OCI) never carry a spec; keep them out of the public repo's history.
-SPEC*.md
-# Exception (maintainer directive 2026-06-13): the 3 governing v1.6.0 specs ARE tracked.
-!SPEC.ROADMAP.v1.6.0.CHECKLIST.md
-!SPEC.CK-LIB-JS.v1.6.0.md
-!SPEC.CK-OPERATIONS.v1.6.0.md
+# SPEC.* are consumer documentation — tracked in the public repo.
+# Distributed artifacts (npm/OCI) never carry a spec, but the specs themselves are public.
 
 # Agent entry-point + local dev/MCP cruft — local working context, never the public repo.
 CLAUDE.md

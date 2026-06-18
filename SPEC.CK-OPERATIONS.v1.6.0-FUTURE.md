@@ -1,9 +1,15 @@
-# SPEC.CK-OPERATIONS.v1.6.0 — The Concept-Kernel Operations Layer (cross-consumer, transport-independent)
+> **FUTURE — post-v1.5.1.** This document covers the operations layer as planned for v1.6.0 "Typed Edge".
+> Current shipped version: **v1.5.0**. Wire contract for v1.5.1: `SPEC.CK-OPERATIONS.v1.5.1.md`.
+> Nothing in this document is shipped or authoritative until v1.6.0 tags and attests.
 
-**Status:** **tracked on the v1.6.0 branch (2026-06-13); publish gated on pgCK ratification.** Grounded in
-pgCK **v0.4.13** (T1–T6 of the v0.5 track set all **released + attested**; `LATEST.md` at 0.4.13) — but the
-**integrated/live-verified floor is still pgCK 0.4.2** (bundle `ociger-ck-allinone:v0.7.18` / client
-`ck-lib-js:1.5.0`), so §8 carries a **two-axis** status (pgCK-released vs integrated). The two contract
+# SPEC.CK-OPERATIONS.v1.6.0-FUTURE — Operations Layer Planned Specification (post-v1.5.1)
+
+**Status:** **tracked on the v1.6.0 branch; publish gated on pgCK ratification.** Grounded in
+pgCK **v0.4.13** (T1–T6 of the v0.5 track set all **released + attested**; `LATEST.md` at 0.4.13).
+**Integrated floor = pgCK 0.4.13 / bundle `ociger-ck-allinone:v0.7.19`** (live-verified 2026-06-14:
+forms ✅, enforcement gated on shape-graph fix — shape-graph-mismatch NOTIFY open to oci-germination).
+Pre-ship corrections 2026-06-15: §3.E `notify` payload extended with `target`; §3.G `affordances` verb
+name corrected; §8 table updated to two-axis reflect v0.7.19 live-verify results. The two contract
 questions Q1/Q2 are **PINNED** (§7).
 This document specifies the **operations layer** that sits between pgCK's substrate spec
 (`SPEC.CKP.v3.9.md`, private) and the per-consumer specs (`SPEC.CK-LIB-JS.v1.6.0`,
@@ -371,18 +377,24 @@ therefore carries `verified:true` + a `proof_digest` and is independently re-ver
 #### `notify` — directed sealed edge that also emits an event ✅ (sugar over link)
 - **Canonical verb:** **none of its own** — `notify` is **sugar over `instance.link`** with
   `event:true`. **Plane:** instance. **Delegation:** no. **Alias:** `notify` (v3.8 name).
-- **Semantics:** "address a fact to another concept" — seal an edge `to —predicate→ …` carrying a body,
-  and emit it on the granted event stream so the target's subscribers see it. This is the operations-
-  layer meaning of cross-kernel addressing: **`notify` is `link` plus an event**, not a distinct
-  primitive (`ck.js` `notify`: `do('instance.link', {source:to, predicate, body, event:true})`;
-  CK-LIB-JS §4.2). The harness's cross-kernel link (`<W> —notifies→ <K>`) is exactly this op on the
+- **Semantics:** "address a fact from one concept to another" — seal an edge `from —predicate→ to`
+  carrying a body, and emit it on the granted event stream so the target's subscribers see it. This is
+  the operations-layer meaning of cross-kernel addressing: **`notify` is `link` plus an event**, not a
+  distinct primitive. The harness's cross-kernel link (`<W> —notifies→ <K>`) is exactly this op on the
   wire (CK-HARNESS-CL §4.1).
-- **Payload shape:** `{ source: to, predicate, body, event: true }`.
+- **Payload shape (CORRECTED 2026-06-15 — G3 closed):**
+  `{ source: from, predicate, target: to, body?, event: true }`.
+  The prior shape `{ source: to, predicate, body, event: true }` omitted `target`, preventing the edge
+  from sealing (`instance.link` requires `{source, predicate, target}`). Confirmed live by CSVC
+  cross-kernel verification 2026-06-14 — the cross-kernel edge could not seal until `target` was
+  supplied. **cklib fix (TE-pending):** `ck.js notify(from, predicate, to, body?)` — `from` is the
+  source concept URN, `to` is the target concept/kernel URN; predicate MUST be a declared IRI in the
+  kernel's property set. To declare a kernel-specific predicate: `propose→vote→apply('add_property',{…})`.
 - **Reply shape:** `{ ok, id, verified, proof_digest }` (the underlying `link` receipt).
 - **Lifecycle/provenance:** sealed edge + emitted event.
-- **PENDING — pgCK (the harness ask):** the canonical mapping of a `notify` `{p,o}` fact to the
-  `instance.link {source,predicate,target}` shape at the harness's G3 (CK-HARNESS-CL §12 G3); pin the
-  `notify`→`instance.link` reduction in the contract so the harness and `cklib` agree on the shape.
+- **PENDING — pgCK (the harness ask):** confirm the `notify→instance.link` reduction carries the
+  `{source,predicate,target}` triple in the harness's G3 wire (CK-HARNESS-CL §12 G3); the operations-
+  layer shape here is now the contract.
 
 ---
 
@@ -429,20 +441,20 @@ therefore carries `verified:true` + a `proof_digest` and is independently re-ver
 
 ### 3.G — Discovery (instance plane): affordances
 
-#### `affordances` — enumerate the granted verb set ⏳ (name + projection)
+#### `affordances` — enumerate the granted verb set ⏳ (projection; name confirmed)
 - **Canonical verb:** **`affordances`** (NOT `kernel.affordances`). **Plane:** instance (a read).
   **Delegation:** no.
 - **Semantics:** return the kernel's declared affordance descriptors **intersected with the verified
   identity's grants** — the set a tool or LLM agent enumerates to discover what it may do (CKP v3.9 P3;
   CK-LIB-JS §4.2, §6). See §6 for the identity ∩ grants rule.
 - **Payload:** `{}` (kernel from the door's `kernel_urn`).
-- **Reply shape (PENDING-PIN Q1):** field `.affordances`. **The descriptor shape is server-defined** —
-  the consumer passes through whatever pgCK returns, unshaped (`{name, plane, inShape?, granted}` is
+- **Reply shape (pinned per-verb, Q1):** field `.affordances`. **The descriptor shape is server-defined**
+  — the consumer passes through whatever pgCK returns, unshaped (`{name, plane, inShape?, granted}` is
   indicative, not client-enforced; CK-LIB-JS §4.2).
-- **Status:** ⏳ — `cklib` historically dispatched `kernel.affordances`; the 0.4.2 registry name is
-  **`affordances`** (`dispatch.sql`). `cklib` fixes its dispatch name. **PENDING — pgCK:** confirm
-  `affordances` is canonical (won't be renamed to a `kernel.`-prefixed form). Per-identity projection
-  is the §6 ⏳ item (the projection degrades to the full surface until grants are enforced server-side).
+- **Status:** ⏳ (projection) — The canonical verb name **`affordances`** is confirmed (`dispatch.sql`
+  pgCK 0.4.2+; was never `kernel.affordances`). **cklib bug (pre-ship fix):** `ck.js` `CK.activate`
+  dispatches `'kernel.affordances'` — must be corrected to `'affordances'` before v1.6.0 ships. Per-
+  identity projection remains ⏳ F-A/T8 gated; degrades to full surface until grants are enforced.
 
 ---
 
@@ -640,39 +652,37 @@ round-trips live at v0.7.19/0.4.13 but declared-shape enforcement is vacuous (sh
 |---|---|---|---|
 | `instance.create` | ✅ v0.4.5 typed | ◑ form-live v0.7.19 (TE-10) | flat `{type,…}` **seals** live (verified:true); gate vacuous on demo (shape-graph) |
 | `instance.update` | ✅ v0.4.11 (T4) | ◑ form-live v0.7.19 (TE-6) | `{id,patch:{…}}` **re-seals** live; undeclared-key rejection vacuous on demo (shape-graph) |
-| `instance.link` | ✅ v0.4.9 (T2) | ◑ seals live v0.7.19 (TE-8) | **target = plain IRI** (fixed; `{'@id'}` turtle-errored); seals but `reachable:false` → reach (NOTIFY) |
-| `instance.transition` | ✅ v0.4.10 (T3) | ✅ live v0.7.19 (TE-7) | `planned→in_progress` ok (config-map fallback; per-kernel map unset on demo); surfaces `allowed` |
-| `instance.retire` | ✅ v0.4.3 | ⏳ bundle-gated | `ckp.retire`+registry (s35); absent from the 0.4.2 bundle |
-| `instance.get` | ✅ (field `.instance`) | 🔨 TE-9 (reply-field fix) | v1.5.0 mapped the wrong field (`instances`); TE-9 corrects to `.instance` |
+| `instance.link` | ✅ v0.4.9 (T2) | ◑ seals live v0.7.19 (TE-8) | target = plain IRI (fixed); seals but `reachable:false` → reach IRI bug (NOTIFY pending pgCK) |
+| `instance.transition` | ✅ v0.4.10 (T3) | ✅ live v0.7.19 (TE-7) | `planned→in_progress` ok; config-map fallback (per-kernel map unset on demo); surfaces `allowed` |
+| `instance.retire` | ✅ v0.4.3 | ◑ v0.7.19 | `ckp.retire`+registry (s35); in pgCK 0.4.13 bundle — not live-verified end-to-end yet |
+| `instance.get` | ✅ (field `.instance`) | ◑ v0.7.19 (TE-9 reply-field fix) | v1.5.0 mapped `.instances`; TE-9 corrects to `.instance` |
 | `instance.query` | ✅ v0.4.8 (T1) | ◑ form-live v0.7.19 (TE-9) | `rows:[{id,body}]` flatten live; short-key resolve + undeclared-reject vacuous on demo (shape-graph) |
-| `instance.reach` | ✅ v0.4.9 (T2) | ⏳ pgCK | `reach{from:bare-id}` → sparql invalid-IRI; `link` returns `reachable:false` — round-trip broken (NOTIFY) |
+| `instance.reach` | ✅ v0.4.9 (T2) | ⏳ broken | `reach{from:bare-id}` → SPARQL invalid-IRI; `link` seals but `reachable:false` — round-trip broken; NOTIFY to pgCK pending |
 | `instance.snapshot` | ⏳ F-A (T8) | ⏳ F-A | `snapshot_not_granted` — no injected requester |
 | `instance.verify` | ✅ | ✅ v1.5.0 | core proof check (live) |
 | `instance.provenance` | ✅ | ✅ v1.5.0 | proof-chain projection (live); fields `.body`/`.proof`/`.ledger` pinned |
 | `instance.validate` | ✅ v0.4.12 (T5) | ◑ form-live v0.7.19 (TE-5) | full `ValidationReport` surfaced live; vacuous (`shapes_triples:0`) on demo (shape-graph) |
-| `notify` (=`link`+event) | ✅ | 🔨 TE-8 (base ✅ v1.5.0) | sugar over `link`; declared predicate |
+| `notify` (=`link`+event) | ✅ | 🔨 **target fix pending** | payload corrected to `{source,predicate,target,body,event:true}` (§3.E); `ck.js` fix needed before ship; declared predicate required |
 | `kernel.propose_change` | ✅ | ✅ v1.5.0 | governance trio round-tripped live (epoch 1→2) |
 | `kernel.vote` | ✅ | ✅ v1.5.0 | `quorum_met:true, approvals:1` |
-| `kernel.apply` | ✅ effect v0.4.5 | ✅ v1.5.0 (epoch); 🔨 type-mutation | `_graph_apply` mutates the type (s39); v1.5.0 verified the epoch bump on 0.4.2 |
-| `affordances` | ✅ name | ✅ v1.5.0 (name); ⏳ projection | per-identity ∩ grants projection = F-A/T8 |
-| `concept.match` | ✅ v0.4.13 (T6) | ⏳ TE-4 not built | governed query affordance (s41); client adoption pending |
+| `kernel.apply` | ✅ effect v0.4.5 | ✅ v1.5.0 (epoch); ◑ type-mutation | `_graph_apply` mutates the type (s39); type-mutation enforcement vacuous on demo (shape-graph) |
+| `affordances` | ✅ name confirmed | 🔨 **verb fix pending** | cklib dispatches `kernel.affordances` — must be corrected to `affordances` before ship; projection ⏳ F-A |
+| `concept.match` | ✅ v0.4.13 (T6) | 🔨 TE-4 not built | governed query affordance (s41); `k.match(term)` handle method not yet coded in `ck.js` |
 | `agent.execute` | ✅ wire / ⏳ registry | ⏳ | **delegated**; typed-facts round-trip live; registry row pending (G6) |
 | `agent.presence` / `agent.say` | ✅ wire / ⏳ registry | ⏳ | **delegated**; relayed; registry row pending |
 | `agent.steer`/`interrupt`/`tool_approve`/`close` | ⏳ | ⏳ | **delegated**; session control on the bridge + ToolCall map (G3/G4) |
 
-**Legend:** pgCK ✅ = released + attested · ⏳ = not yet handled · ❌ = gap (none). Integrated ✅ = fully
-live-verified · ◑ = form-live at v0.7.19/0.4.13, enforcement vacuous (shape-graph mismatch, NOTIFY) · 🔨 =
-built-ahead/mock · ⏳ = pgCK-substrate / F-A blocked. Q1/Q2 **pinned** (§7); the §3 shapes are the ratified
-contract.
+**Legend:** pgCK ✅ = released + attested · ⏳ = not yet handled. Integrated ✅ = fully live-verified ·
+◑ = form-live at v0.7.19/0.4.13, enforcement vacuous (shape-graph mismatch) or not end-to-end verified ·
+🔨 = built-ahead or fix-pending (pre-ship) · ⏳ = pgCK-substrate / F-A / broken. Q1/Q2 **pinned** (§7).
 
-**Bottom line (verify-v160, 2026-06-14).** The bundle bump landed — `ociger-ck-allinone:v0.7.19` bakes
-pgCK 0.4.13 (#14 resolved). Against it the client's TE **forms are live-verified**: typed `create` seals,
-`query` rows flatten, `transition`/`update {id,patch}`/`validate` round-trip, `link` seals (target-shape
-fixed). **But declared-shape *enforcement* is vacuous** on the demo: its SHACL shapes are in
-`urn:ckp:demo/kernel/board` while pgCK reads `urn:ckp:demo/kernel/ck` (empty) — so short-key resolution,
-undeclared-key rejection, and real validation all no-op (NOTIFY: shape-graph-mismatch; + pgCK reach/link
-round-trip). **v1.6.0 is form-ready, not enforcement-ready**: once the shapes land in the read graph the ◑
-rows flip to ✅ with no client change, and v1.6.0 is tag-ready.
+**Bottom line (updated 2026-06-15).** `ociger-ck-allinone:v0.7.19` bakes pgCK 0.4.13; live-verify
+2026-06-14 showed forms round-tripping but enforcement vacuous (shape-graph mismatch — oci-germination
+NOTIFY open). Three pre-ship client fixes remain: `notify` target, `k.match()` handle, `affordances`
+verb name. `instance.reach` end-to-end is broken (bare-id IRI → SPARQL error; NOTIFY to pgCK pending).
+**v1.6.0 unblocks** once: (1) shape-graph fix from oci-germination, (2) reach IRI fix from pgCK, (3)
+the three client fixes above are coded and the OCI image is built + attested. The ◑ rows flip to ✅
+with no further client change once enforcement is non-vacuous.
 
 ---
 

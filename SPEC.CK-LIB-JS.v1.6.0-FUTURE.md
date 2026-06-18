@@ -1,4 +1,8 @@
-# SPEC.CK-LIB-JS.v1.6.0 — CK.Lib.Js Normative Specification (the dispatch-only, kernel-typed concept-kernel surface)
+> **FUTURE — post-v1.5.1.** This document governs the planned v1.6.0 "Typed Edge" release.
+> Current shipped version: **v1.5.0**. Next release in progress: **v1.5.1** (`SPEC.ROADMAP.v1.5.1.CHECKLIST.md`).
+> Nothing in this document is shipped or authoritative until v1.6.0 tags and attests.
+
+# SPEC.CK-LIB-JS.v1.6.0-FUTURE — CK.Lib.Js Planned Specification (post-v1.5.1)
 
 **Status:** **AUTHORITATIVE — the CK.Lib.Js-owned governing design contract for v1.6.0.**
 This document governs the v1.6.0 build and its implementation plan
@@ -26,8 +30,8 @@ never reproduces pgCK-internal detail. *One cross-repo gate:* pgCK holds the v3.
 when ratified" (its roadmap §15), so the public **commit/push** of this spec is coordinated with pgCK
 via NOTIFY first.
 
-**Date:** 2026-06-12
-**Revision:** v1.6.0 opened over the shipped v1.5.0 surface; aligned to pgCK v0.4.7 (Tier 2 attested) + the v0.5 roadmap. Code authoritative where it disagrees with prose.
+**Date:** 2026-06-15
+**Revision:** v1.6.0 opened over the shipped v1.5.0 surface; aligned to pgCK v0.4.13 (T1–T6 all attested). Pre-ship corrections 2026-06-15: `notify` signature extended with `target` (§4.2); `k.match(term)` handle sugar added (TE-4); `affordances()` dispatch verb corrected (`affordances`, not `kernel.affordances`); §11 TE status updated to reflect built-ahead state. Code authoritative where it disagrees with prose.
 **Supersedes (on ship):** SPEC.CK-LIB-JS.v1.5.0 (the shipped dispatch-only precursor) — kept for history.
 **Grounded in:** **CKP v3.9 — Critical Isolation** (`SPEC.CKP.v3.9.md`, pgCK root; private) + the
 **`SPEC.pgCK.ROADMAP.v0.5.0`** track set (T1…T10 — the kernel-derived forms, `v0.4.8 → v0.5.0`) +
@@ -363,12 +367,23 @@ expressible at L2 since v1.4.2, and it now carries the v3.8→v3.9 migration):
 | `k.provenance(id, depth?)` | `instance.provenance` | `provenance` | proof-chain projection |
 | `k.snapshot(scope?)` | `instance.snapshot` | `snapshot.board`/`snapshot.bodies` *(server-side alias coordination only — the client implements no fallback)* | `instance[]` (per-requester grant) |
 | `k.validate(body)` | `instance.validate` | `ckp.validate` | `{ conforms, violations? }` |
-| `k.notify(to, predicate, body)` | *(sugar over `link`)* `instance.link` with `event: true` | `notify` | `{ id, verified, proof_digest }` |
+| `k.notify(from, predicate, to, body?)` | *(sugar over `link`)* `instance.link` with `event: true` | `notify` | `{ id, verified, proof_digest }` |
+| `k.match(term)` | `concept.match` (governed query) | — (new; TE-4) | `{ term, count, candidates }` |
 
 `notify` is **not a distinct `OP_VERB` entry** — it is sugar over the `link` verb:
-`do('instance.link', { source: to, predicate, body, event: true })`. Retirement is a **sealed
-retraction**, not a delete — *"You cannot unseal a sealed fact. You can only
-seal a retraction."* (`VISION.v3.8.1` §2.1) → `instance.retire`. Object refs are `{"@id"}` id-nodes.
+`do('instance.link', { source: from, predicate, target: to, body, event: true })`. The `from` argument
+is the **source** concept URN (the concept sending the notification); `to` is the **target** concept or
+kernel URN being addressed. Both are required for a sealed cross-kernel edge (confirmed by CSVC live
+verification 2026-06-14 — prior 3-arg form omitted `target`, preventing the edge from sealing). A declared
+predicate IRI MUST be supplied; use `propose→vote→apply('add_property',{…})` to declare a kernel-specific
+predicate if none of the base-ontology predicates fit. Retirement is a **sealed retraction**, not a
+delete — *"You cannot unseal a sealed fact. You can only seal a retraction."* (`VISION.v3.8.1` §2.1) →
+`instance.retire`. Object refs are `{"@id"}` id-nodes.
+
+`k.match(term)` calls the **governed query affordance** `concept.match` (pgCK v0.4.13 T6 — seeded as a
+governed query at bootstrap; cklib adopts typed params). Returns `{ term, count, candidates }` from the
+reply field `.candidates`. **TE-4** task: code the handle method; the `REPLY_FIELD` entry already maps
+`concept.match`→`candidates` (`ck.js`).
 
 ### 4.3 Transition — `k.transition(id, toState, evidence?)` (state-machine-gated)
 
@@ -436,6 +451,26 @@ await task.apply(p.id);                                                         
   `add_property`, `modify_shape_constraint`, `add_affordance`, `set_transition_map`, `set_quorum`,
   `set_materialize_policy`) validated by `ProposalShape`. The client never authors Turtle (the one
   fenced `raw_ttl` path is server-side, v3.9 §5.2).
+
+  **`add_property` detail shape (normative — RCA 2026-06-15):**
+  ```js
+  { op: 'add_property', detail: {
+      path:        '<full property IRI>',        // required — e.g. 'urn:ckp:csvc/prop/notifies'
+      targetClass: '<full class IRI>',           // required — the type this property attaches to
+      datatype:    '<XSD or class IRI>',         // required
+      minCount:    0,   // ← OPTIONAL property.  0 = optional, 1 = required (DEFAULT if omitted)
+      maxCount:    1,   // optional — omit for unbounded
+  }, requires_quorum: 1 }
+  ```
+  **`minCount` (integer) is the constraint field — NOT `required` (boolean).** Supplying `required:false`
+  is silently ignored and `minCount` defaults to **1 (= required)**. Use `minCount:0` for an optional
+  property. The apply reply echoes the effective constraint; read it before voting. A shape change that
+  tightens a property on a class with existing instances will break future creates — **preview the
+  proposal's effect before voting** (pgCK forward ask §7.1; see SPEC.CK-OPERATIONS §3.F).
+  **Reversibility:** a sealed type change is never a dead end. Propose the inverse (`modify_shape_constraint`
+  with the corrected `minCount`, or `remove_property`) → vote → apply → epoch++. The prior decision is kept
+  as sealed history; the new one is active. The app layer MAY offer "revert" as a convenience that
+  auto-proposes the inverse — this is an app-level pattern (CSVC G3), not a new pgCK verb.
 - `vote(proposalId, choice)` → `kernel.vote`; a human approval is an ordinary sealed `ckp:Vote`.
 - `apply(proposalId)` → `kernel.apply`; rejected unless quorum is satisfied.
 - **Shipped (pgCK CI-D + v0.4.5):** the plane is live and `apply` now **mutates the kernel type** — a
@@ -644,28 +679,46 @@ v0.3). This section is *self-state about CK.Lib.Js's own dev-coordination proces
 
 ## 11. Forward work — the v1.6.0 track set (the client-edge twin of pgCK v0.5)
 
-The pgCK Tier 2 gates (CI-A…CI-E) are **shipped + attested** (v0.4.5–v0.4.7); the rows below are the
-**v1.6.0 Typed-Edge tasks (TE-n)**, each consuming a pgCK **v0.5 track (T-n)**. The client degrades
-honestly against any unshipped track (stable signatures).
+The pgCK Tier 2 gates (CI-A…CI-E) are **shipped + attested** (v0.4.5–v0.4.7). pgCK **T1–T6 are also
+shipped + attested** (v0.4.8–v0.4.13). The rows below show current client delivery state (updated
+2026-06-15 against `ck-lib-js.task.v1.6.0-typed-edge` and live verify vs `ociger-ck-allinone:v0.7.19`
+/ pgCK `0.4.13`).
 
-| TE task (client) | Depends on / pgCK track |
-|---|---|
-| **TE-10** adopt the uniform `instance.create {type,…}` body → drop the `type→payload-key` map | keystone (pgCK v0.4.5, shipped) |
-| **TE-9** `instance.query` send the **derived QueryShape** keys → drop the client cache-filter fallback (§4.5) | **T1 · v0.4.8** |
-| **TE-8** `instance.link`/`reach` use the kernel's **declared predicate set** (§4.5) | **T2 · v0.4.9** |
-| **TE-7** `instance.transition` render the kernel's **sealed transition map** (§4.3) | **T3 · v0.4.10** |
-| **TE-6** `instance.update` send a **declared-shape patch** | **T4 · v0.4.11** |
-| **TE-5** `validate()` surface the full **`ValidationReport`** (§4.4) → drop boolean-grade | **T5 · v0.4.12** |
-| **TE-4** governed `concept.match` typed-param verb — callers bind params, never query text | **T6 · v0.4.13** |
-| **TE-3** `instance.snapshot` supply the **validated JWT** → render granted bodies (§4.10) | **T8 · v0.4.15** (F-A) + SPORE |
-| **TE-2** per-session result routing on `session.{project}.{id}` below L2 | **T9 · v0.4.16** (F-C) |
-| **TE-1** ⛴ **ship v1.6.0 — Typed Edge** | pgCK **v0.5.0** |
+`◑` = form-live at v0.7.19 (wire round-trips), enforcement vacuous pending shape-graph fix
+(oci-germination NOTIFY `shape-graph-mismatch` — `_WIP/NOTIFIES.oci-germination.v0.7.19.…`).
+`🔨` = built-ahead on branch, not yet in a released OCI image.
+`⏳` = pgCK-substrate / F-A / F-C blocked.
+
+| TE task (client) | pgCK track | Status |
+|---|---|---|
+| **TE-10** adopt uniform `instance.create {type,…}` body; drop `type→payload-key` map | keystone · v0.4.5 ✅ | ◑ form-live (`ck.js`) |
+| **TE-9** `instance.query` sends declared QueryShape keys; drops cache-filter fallback | T1 · v0.4.8 ✅ | ◑ form-live |
+| **TE-8** `instance.link` target is plain IRI; uses declared predicate set | T2 · v0.4.9 ✅ | ◑ form-live *(reach end-to-end broken — bare `from` id → SPARQL IRI error; NOTIFY pending pgCK)* |
+| **TE-7** `instance.transition` dispatches natively; renders allowed `to_state`s | T3 · v0.4.10 ✅ | ✅ live v0.7.19 |
+| **TE-6** `instance.update` sends `{id, patch:{…}}` declared-shape patch | T4 · v0.4.11 ✅ | ◑ form-live |
+| **TE-5** `validate()` surfaces full `ValidationReport` | T5 · v0.4.12 ✅ | ◑ form-live (shapes vacuous on demo — shape-graph) |
+| **TE-4** `k.match(term)` governed query affordance sugar; typed params, never query text | T6 · v0.4.13 ✅ | 🔨 REPLY_FIELD mapped; **handle method not yet coded** |
+| **notify target** `k.notify(from, predicate, to, body?)` — add `target` so cross-kernel edge seals | spec correction (§4.2) | 🔨 **fix pending in `ck.js`** |
+| **affordances verb** dispatch `affordances` (not `kernel.affordances`) | spec correction (§3.G) | 🔨 **fix pending in `ck.js`** |
+| **TE-3** `instance.snapshot` — supply validated JWT; render granted bodies | T8 · v0.4.15 (F-A) + SPORE | ⏳ gated |
+| **TE-2** per-session result routing on `session.{project}.{id}` | T9 · v0.4.16 (F-C) | ⏳ gated |
+| **TE-1** ⛴ **ship v1.6.0 — Typed Edge** | pgCK v0.5.0 | ⏳ blocked on: TE-4 code, notify fix, affordances fix, shape-graph mismatch (oci-germination) |
+
+**Release blockers (must clear before TE-1):**
+1. Shape-graph mismatch — oci-germination NOTIFY `v0.7.19.shape-graph-mismatch-typed-edge-vacuous`; awaiting RESPONSE. Fixes demo bootstrap so T1–T5 enforcement is non-vacuous.
+2. `instance.reach` bare-id IRI bug — `from` must be a full IRI; raises SPARQL invalid-IRI server-side. NOTIFY to pgCK pending.
+3. TE-4 `k.match(term)` handle method — code it in `ck.js`.
+4. `notify` target — fix `ck.js:149` to `notify(from, predicate, to, body?)` / `{source:from, predicate, target:to, body, event:true}`.
+5. `affordances()` verb — dispatch `affordances` not `kernel.affordances`.
 
 **Carried forward (independent of the track list):** drop the v3.8 subject-grammar shim once the
-four-tuple default-flip lands (CE-B-2; pgCK presents `ckp.dispatch` natively); retire the
-`task.*`→`instance.*` aliases one minor after web2-green (coordinate via NOTIFIES); Node / LLM-agent
-harness binding (`ck-harness`); minified build + TypeScript types; extract legacy render → CK.Lib.Xr;
-hard-remove the `./client` alias at v2.0. *(Vendor `nats.ws`+`@msgpack` — **SHIPPED at v1.4.2**.)*
+four-tuple default-flip lands (CE-B-2); retire the `task.*`→`instance.*` aliases one minor after
+web2-green (NOTIFIES); Node / LLM-agent harness (`ck-harness`); minified build + TypeScript types;
+extract legacy render → CK.Lib.Xr; hard-remove `./client` alias at v2.0.
 
-Each item that ships becomes part of the next normative spec. This document does not move once it
-flips to authoritative; it remains gitignored.
+**Post-v1.6.0 versions (governed by SPEC.ROADMAP.v1.6.1.CHECKLIST.md):**
+- **v1.6.1** — TE-3 (`instance.snapshot`) when pgCK T8 + SPORE F-A land; CE-B-2 default-flip.
+- **v1.6.2** — TE-2 (per-session routing) when pgCK T9 F-C lands — or batched into v1.7.0 with other accumulations.
+
+Each item that ships becomes part of the next normative spec. This document becomes immutable on the
+day the `1.6.0` OCI image is built and attested; until then it remains a living pre-ship governing contract.
