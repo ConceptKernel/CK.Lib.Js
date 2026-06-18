@@ -2,6 +2,41 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.1] — 2026-06-18
+
+First release of the **typed-edge forms** — kernel-derived typed operations mirroring pgCK v0.5 tracks
+T1–T6 — plus client bug fixes and the canonical NATS wire-contract spec. Requires **pgCK ≥ 0.4.13**.
+
+### Added — typed-edge forms
+- `create(type, fields)` — uniform type-first body; drops the `task`/`name` payload-key nesting (TE-10).
+- `query(type, filter)` — derived-QueryShape reads: declared-IRI type, short filter keys, flattened rows (TE-9).
+- `transition(id, toState)` — native sealed-map transition; surfaces the `allowed` states (TE-7).
+- `update(id, patch)` — declared-shape patch `{id, patch:{…}}` (TE-6).
+- `validate(body)` — full SHACL `ValidationReport` (no boolean-grade reduction) (TE-5).
+- `match(term)` — governed `concept.match`; binds `{term}` into the sealed query, returns `candidates` (TE-4).
+
+### Fixed
+- **Gov-door routing (G5a):** governed verbs route to `input.kernel.<gov>.action.*` and the gov reply is
+  subscribed — fixes `CK.activate(<non-gov kernel>).create()` (and all governed verbs) timing out.
+- `notify(from, predicate, to, body?)` now seals the cross-kernel edge — was missing `target` (FIX-A).
+- `link(source, predicate, target)` — `target` is a plain IRI; an `{'@id'}` wrapper turtle-errored (TE-8).
+- Discovery verb `kernel.affordances` → `affordances` (FIX-B).
+- Read reply-field normalization corrected to pgCK's pinned per-verb fields; read rows flatten to instances.
+
+### Verified
+- All forms proven **real-path** (browser → wss → relay → pgCK 0.4.13), not mock/psql — see `tests/real-path/`.
+
+### Known (server/bundle-side, tracked for v1.6.0)
+- Declared-shape **enforcement is vacuous on the demo bundle** — its shapes are seeded into
+  `urn:ckp:demo/kernel/board` while pgCK reads `…/kernel/ck` (BLK-1). Enforcement works on a
+  correctly-seeded kernel.
+- `reach` degrades to `[]` pending a pgCK bare-id fix (FIX-C).
+
+### Breaking vs 1.5.0
+- `notify` signature gains `from` as the first argument.
+- `create` drops the `{task:{…}}` wrapper (pass fields directly).
+- `query` filters use declared property localnames (QueryShape).
+
 ## [1.5.0] — 2026-06-11
 
 > **✅ RELEASED 2026-06-11 — attested-success.** CI run `27374736960` → `ghcr.io/conceptkernel/ck-lib-js:1.5.0`
