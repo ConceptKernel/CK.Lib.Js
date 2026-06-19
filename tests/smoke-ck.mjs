@@ -72,10 +72,14 @@ ok('affordances() discovered', k.affordances().length === 1 && k.affordances()[0
 
 // TE-10: create-by-declared-type — flat {type:<class IRI>,…fields}, sealed vs the kernel's declared shape.
 const TASK = 'urn:ckp:demo/type/Task', GOAL = 'urn:ckp:demo/type/Goal', BLOCKS = TASK + '/blocks';
-const c = await k.create(TASK, { title: 'Rotate SVIDs', priority: 4 });
+const c = await k.create(TASK, { title: 'Rotate SVIDs', priority: 4, target_kernel: 'demo' });
 ok('create → {ok,id,verified,proof_digest}', c.ok && c.id === TASK + '#new' && c.verified && c.proof_digest === 'pf:' + TASK + '#new');
 ok('create result cached (get is cache-first)', (await k.get(TASK + '#new'))?.title === 'Rotate SVIDs');
 ok('create dispatched flat {type,…fields} (no task wrapper)', tp.calls.some((x) => x.verb === 'instance.create' && x.payload.type === TASK && !x.payload.task));
+// REGRESSION GUARD (v1.5.1 → v1.5.2): create MUST pass EVERY caller field through. v1.5.1 stripped
+// `target_kernel`, which a declared shape can require — so under real enforcement the create failed
+// `missing required …#target_kernel` even when the caller passed it. Never strip caller fields.
+ok('create passes ALL fields incl. target_kernel (no strip)', tp.calls.some((x) => x.verb === 'instance.create' && x.payload.target_kernel === 'demo'));
 // TE-10: a bare (non-IRI) type is rejected by create_typed — the client passes it through; server hints.
 const bare = await k.create('Task', { title: 'x' });
 ok('create(bare name) → type_must_be_iri (declared-IRI contract)', bare.ok === false && bare.error === 'type_must_be_iri');

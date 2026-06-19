@@ -127,18 +127,19 @@ export class ConceptKernel {
   // ── Named conveniences (sugar over `do`, mapped via OP_VERB) ────────────────
 
   async create(type, body = {}) {
-    // TE-10 (v1.6.0 Typed Edge): uniform create-by-declared-type. pgCK ≥0.4.4 routes instance.create →
-    // ckp.create_typed when {type} is top-level with NO `task` key, sealing against the kernel's OWN
-    // declared SHACL shape (sh:targetClass = type; each caller field local-name → declared property IRI).
-    // `type` MUST be the kernel's declared class IRI (e.g. urn:ckp:<project>/type/Ship); the server
-    // rejects a bare name (`type_must_be_iri`). The kernel is conveyed by the handle (transport routes by
-    // kernelUrn) and the project is server-scoped (ckp.project) — so `target_kernel` is no longer sent.
-    // This drops the transient type→payload-key (`task`/`name`) nesting.
-    const { target_kernel, ...fields } = body;            // target_kernel: handle/server-scoped now — stripped, not sent
-    const w = writeResult(await this.do(OP_VERB.create, { type, ...fields }));
+    // Uniform create-by-declared-type. pgCK routes instance.create → ckp.create_typed when {type} is
+    // top-level with NO `task` key, sealing against the kernel's OWN declared SHACL shape (sh:targetClass =
+    // type; each caller field local-name → declared property IRI). `type` MUST be the declared class IRI;
+    // the server rejects a bare name (`type_must_be_iri`). Drops the transient `task`/`name` nesting.
+    //
+    // FIX (v1.5.2): pass ALL caller fields through. v1.5.1 STRIPPED `target_kernel` (wrongly assumed
+    // server-scoped) — but a kernel may DECLARE it required (the demo Task shape does), so under real
+    // enforcement (BLK-1 fixed, ociger v0.7.20) the create failed `missing required …#target_kernel` even
+    // when the caller passed it. The caller owns the shape-required fields; the client never drops them.
+    const w = writeResult(await this.do(OP_VERB.create, { type, ...body }));
     // Receipt-only reply → optimistically surface the sealed instance for cache-first reads; the
     // authoritative sealed event reconciles it (replace-by-id).
-    if (w.ok && w.id) this._store.ingest({ '@id': w.id, '@type': type, ...fields });
+    if (w.ok && w.id) this._store.ingest({ '@id': w.id, '@type': type, ...body });
     return w;
   }
   /** TE-6: generic declared-shape patch (pgCK T4, ≥0.4.11) — instance.update {id, patch:{…}} → update_typed,

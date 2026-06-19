@@ -27,29 +27,38 @@ const C = 'https://conceptkernel.org/ontology/v3.8/core#';
 const TASK = C + 'Task', GOAL = C + 'Goal', PART_OF_GOAL = C + 'part_of_goal';
 
 export async function runHarness(CK, kernel = 'demo') {
-  const r = { proven: {}, vacuous: {}, degrade: {}, errors: [] };
+  const r = { proven: {}, enforcement: {}, degrade: {}, errors: [] };
   try {
     const k = await CK.activate(kernel);
 
-    const c = await k.create(TASK, { part_of_goal: 'harness' });
+    // SHAPE-COMPLETE Task — the demo shape requires BOTH part_of_goal AND target_kernel under real
+    // enforcement (v0.7.20+, BLK-1 fixed). The client never strips caller fields (v1.5.2 fix).
+    const c = await k.create(TASK, { part_of_goal: 'backlog:demo', target_kernel: 'demo' });
     r.proven.create     = !!(c.ok && c.id && c.verified && c.proof_digest);
     const id = c.id;
     r.proven.verify     = (await k.verify(id)).verified === true;
     r.proven.provenance = !!((await k.provenance(id)).proof);
     r.proven.query      = Array.isArray(await k.query(TASK, {}));
     r.proven.transition = (await k.transition(id, 'in_progress')).ok === true;
-    r.proven.update     = (await k.update(id, { part_of_goal: 'upd' })).ok === true;
-    r.proven.validate   = typeof (await k.validate({ type: TASK, part_of_goal: 'x' })).conforms === 'boolean';
+    r.proven.update     = (await k.update(id, { part_of_goal: 'backlog:demo2' })).ok === true;
+    r.proven.validate   = typeof (await k.validate({ type: TASK, part_of_goal: 'x', target_kernel: 'demo' })).conforms === 'boolean';
     r.proven.match      = Array.isArray(await k.match('x'));
-    const g = await k.create(GOAL, { label: 'Harness Goal' });
+    const g = await k.create(GOAL, { label: 'Harness Goal', target_kernel: 'demo' });
     r.proven.link       = (await k.link(id, PART_OF_GOAL, g.id)).ok === true;
 
-    // Honest gaps — these are NOT client defects; they prove the BLK-1 / FIX-C boundaries.
-    r.vacuous.filteredQuery_BLK1 = (await k.query(TASK, { part_of_goal: 'harness' })).length; // expect 0 until BLK-1
-    r.degrade.reach_FIXC         = (await k.reach(id, PART_OF_GOAL)).length;                   // expect 0 until FIX-C
+    // ENFORCEMENT — the checks the old (vacuous-env) harness LACKED, which let the target_kernel-strip ship:
+    //  • an INCOMPLETE payload MUST be REJECTED (vacuously sealed on v0.7.19; must fail on v0.7.20+).
+    const inc = await k.create(TASK, { part_of_goal: 'backlog:demo' });   // missing required target_kernel
+    r.enforcement.rejectsIncompleteCreate = inc.ok === false && /missing required/i.test(inc.error || '');
+    //  • a declared short-key FILTER now resolves (was vacuous 0 under BLK-1).
+    r.enforcement.filteredQueryResolves   = (await k.query(TASK, { target_kernel: 'demo' })).length > 0;
+
+    // Remaining honest gap (FIX-C, pgCK-side): reach degrades to [] until pgCK resolves bare-id IRIs.
+    r.degrade.reach_FIXC = (await k.reach(id, PART_OF_GOAL)).length;
   } catch (e) {
     r.errors.push(String(e && e.message || e));
   }
-  r.allFormsProven = Object.values(r.proven).every(Boolean);
+  r.allFormsProven  = Object.values(r.proven).every(Boolean);
+  r.enforcementReal = Object.values(r.enforcement).every(Boolean);
   return r;
 }
