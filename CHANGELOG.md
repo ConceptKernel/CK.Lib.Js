@@ -2,6 +2,25 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.2] — 2026-06-19
+
+Regression fix + verification against **real enforcement**. Requires **pgCK ≥ 0.4.13** (ociger ≥ v0.7.20
+for non-vacuous demo enforcement).
+
+### Fixed
+- **`create` no longer strips `target_kernel`** (or any caller field). v1.5.1 dropped it (wrongly assumed
+  server-scoped), but a kernel's declared shape can require it — so under real enforcement every such
+  create failed `ckp.seal: missing required …`. `create()` now passes **all** caller fields through; the
+  caller owns the shape-required set. (Found by the oci-germination v0.7.20 integration.)
+
+### Verified (real enforcement — ociger v0.7.20 / pgCK 0.4.14)
+- Real-path harness: `allFormsProven` **and** `enforcementReal` — a shape-complete create seals, an
+  **incomplete** create is **rejected**, the declared short-key filter **resolves**. The harness no longer
+  false-greens against vacuous enforcement.
+- Unit guard added: `create` must pass `target_kernel` through — the v1.5.1 strip cannot recur.
+- Upstream-resolved + confirmed real-path: **BLK-1** (demo shapes now in `kernel/ck`; enforcement real)
+  and **FIX-C** (`reach` returns the linked target).
+
 ## [1.5.1] — 2026-06-18
 
 > **✅ RELEASED 2026-06-18 — attested-success.** CI run `27790532785` (publish in 50s) →

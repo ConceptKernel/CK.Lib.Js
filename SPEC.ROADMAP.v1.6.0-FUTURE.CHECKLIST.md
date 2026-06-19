@@ -42,8 +42,8 @@ Gated on: **pgCK T8 (v0.4.15)** + **pgCK T9 (v0.4.16)** + **BLK-1** resolved + *
 |---|---|---|---|
 | **TE-3** | `instance.snapshot` — supply verified JWT; render granted bodies; drop `snapshot_not_granted` degrade | pgCK T8 · v0.4.15 (F-A) + SPORE Phases 0–1 | `[ ]` gated (pgCK T8) |
 | **TE-2** | Per-session result routing on `session.{project}.{id}` — subscribe below L2; correlate to dispatch | pgCK T9 · v0.4.16 (F-C) | `[ ]` gated (pgCK T9) |
-| **FIX-C** | `reach` — `from` must be a full IRI; bare instance-id triggers pgCK SPARQL error | pgCK NOTIFY response | `[ ]` awaiting pgCK |
-| **BLK-1** | Demo enforcement non-vacuous — shapes must be in `urn:ckp:<proj>/kernel/ck` | oci-germination v0.7.20 (pgCK reconcile first) | `[ ]` awaiting oci-germination |
+| **FIX-C** | `reach` — `from` must be a full IRI; bare instance-id triggers pgCK SPARQL error | pgCK NOTIFY response | `[x]` RESOLVED — ociger v0.7.20; `reach` returns the linked target (real-path verified, v1.5.2) |
+| **BLK-1** | Demo enforcement non-vacuous — shapes must be in `urn:ckp:<proj>/kernel/ck` | oci-germination v0.7.20 | `[x]` FIXED — ociger v0.7.20; shapes in `kernel/ck`, enforcement real (real-path verified, v1.5.2) |
 | **MILESTONE** | **Announce v1.6.0** — when every item above is `[x]`, the accumulated 1.5.x state *is* v1.6.0; re-tag/announce then. No v1.6.0 tag before that. | all above `[x]` | `[ ]` |
 
 ---
