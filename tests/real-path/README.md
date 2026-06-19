@@ -6,7 +6,7 @@ bypasses the transport — exactly how the gov-routing timeout once slipped past
 [`harness.js`](./harness.js) for the run procedure (docker-cp the modules into the dev env's
 `/app/cklib`, then `page.evaluate(() => runHarness(CK))` on `https://ck-lib-js.localhost/`).
 
-## Proof — 2026-06-18, vs `ociger-ck-allinone:v0.7.19` / pgCK `0.4.13`
+## Proof — 2026-06-19, vs `ociger-ck-allinone:v0.7.20` / pgCK `0.4.14` (real enforcement)
 
 `runHarness(CK)` → `allFormsProven: true`. Every client form round-trips through the real path:
 
@@ -22,12 +22,18 @@ bypasses the transport — exactly how the gov-routing timeout once slipped past
 | `link` (TE-8) | edge sealed, verified ✅ |
 | **gov-routing (G5a)** | every verb routed to the gov door + reply correlated ✅ |
 
-## Known gaps — server/bundle-side, NOT client code (tracked for v1.6.0)
+## Enforcement — real on v0.7.20 (`enforcementReal: true`)
 
-| signal | meaning |
+`runHarness` also asserts the **enforcement** axis — the check the original v0.7.19 run *lacked*, which let
+the v1.5.1 `target_kernel`-strip regression ship under *vacuous* enforcement:
+
+| signal | result |
 |---|---|
-| `vacuous.filteredQuery_BLK1: 0` | declared-shape **enforcement vacuous** on the *demo* — its shapes are sealed into `urn:ckp:demo/kernel/board` while pgCK reads `…/kernel/ck`. **BLK-1** (oci-germination bootstrap). Enforcement *works* on a correctly-seeded kernel (CSVC proved it). |
-| `degrade.reach_FIXC: 0` | pgCK `reach` bare-id → SPARQL invalid-IRI; client **degrades honestly to `[]`**. **FIX-C** (pgCK). |
+| `enforcement.rejectsIncompleteCreate` | ✅ a create missing a declared-required field is **rejected** (`ckp.seal: missing required …`) |
+| `enforcement.filteredQueryResolves` | ✅ the declared short-key filter **resolves** (BLK-1 fixed — shapes now in `kernel/ck`) |
+| `degrade.reach_FIXC` | ✅ `reach` returns the linked target (FIX-C resolved in v0.7.20) |
 
-Neither blocks the v1.5.1 tag: the client forms are correct; the gaps are a demo-bundle misconfiguration
-and a pgCK server bug, both tracked, both disclosed.
+**BLK-1** (enforcement vacuous) and **FIX-C** (reach bare-id) were resolved by oci-germination **v0.7.20**.
+The v1.5.1 regression they exposed — `create` stripping `target_kernel` — is fixed in **v1.5.2**, guarded by
+a unit test (no-strip) and this harness (incomplete create must be rejected). The harness can no longer
+false-green against vacuous enforcement.

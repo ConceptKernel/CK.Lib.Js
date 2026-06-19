@@ -4,6 +4,12 @@ All notable changes to CK.Lib.Js are documented here.
 
 ## [1.5.2] — 2026-06-19
 
+> **✅ RELEASED 2026-06-19 — attested-success.** CI run `27817676032` (publish in 52s) →
+> `ghcr.io/conceptkernel/ck-lib-js:1.5.2`; `gh attestation verify` exit 0; `LATEST.md` advanced to v1.5.2;
+> GitHub Release live (09:33:16Z). **Byte-verified:** bundle = exactly `ck.js` + `ck-client.js` +
+> `ck-store.js` + `vendor/{nats.ws,msgpack}.js` + README/LICENSE. Terminal status logged (Rule 3/4).
+> **Regression fix verified real-path** vs ociger v0.7.20 / pgCK 0.4.14 (`tests/real-path/`).
+
 Regression fix + verification against **real enforcement**. Requires **pgCK ≥ 0.4.13** (ociger ≥ v0.7.20
 for non-vacuous demo enforcement).
 
