@@ -1,105 +1,71 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<title>CK.Lib.Js — real-path verification</title>
-<style>
-  body { font-family: -apple-system, system-ui, sans-serif; max-width: 800px; margin: 3rem auto; padding: 0 1rem; color: #1a1a1a; }
-  h1 { margin-bottom: 0.25rem; }
-  .meta { color: #666; margin-bottom: 1.5rem; font-size: 0.9rem; }
-  .meta a { color: #0366d6; }
-  .panel { border: 1px solid #ddd; border-radius: 6px; padding: 1rem 1.25rem; margin: 1rem 0; }
-  .ok   { border-color: #1aaa3d; background: #f3fff5; }
-  .fail { border-color: #c92020; background: #fff5f5; }
-  .pending { border-color: #888; background: #f8f8f8; }
-  .marker { font-weight: 700; margin-bottom: 0.5rem; }
-  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; margin-top: 0.75rem; }
-  th, td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid #eee; }
-  th { background: rgba(0,0,0,0.04); }
-  .pass { color: #1aaa3d; font-weight: 700; }
-  .fail-cell { color: #c92020; font-weight: 700; }
-  .skip { color: #888; }
-  pre { background: #f4f4f4; padding: 0.5rem; border-radius: 4px; overflow-x: auto; font-size: 0.82em; margin-top: 0.75rem; }
-  code { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }
-  button { padding: 0.4rem 1rem; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #fff; font-size: 0.9rem; margin-top: 0.5rem; }
-  button:hover { background: #f5f5f5; }
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CK.Lib.Js v1.5.x keystone verify — pgCK (live, full surface)</title>
+  <style>
+    :root { color-scheme: light dark; }
+    body { font: 14px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; margin: 0; padding: 1.5rem; max-width: 1100px; }
+    h1 { font-size: 1.1rem; margin: 0 0 .25rem; }
+    h2 { font-size: .95rem; margin: 1.25rem 0 .5rem; opacity: .8; }
+    .sub { opacity: .6; margin: 0 0 1rem; }
+    #summary { padding: .6rem .8rem; border-radius: 6px; font-weight: 700; margin: 1rem 0; }
+    #summary.ok { background: #11331a; color: #6ee7a0; }
+    #summary.bad { background: #3a1313; color: #ff8a8a; }
+    #summary:empty { display: none; }
+    ul#steps { list-style: none; padding: 0; margin: 0; }
+    li.step { display: flex; gap: .5rem; align-items: baseline; padding: .35rem .5rem; border-radius: 4px; }
+    li.step .badge { display: inline-block; min-width: 3.2rem; text-align: center; font-weight: 700; padding: .05rem .3rem; border-radius: 4px; font-size: .8rem; }
+    li.pending .badge { background: #333; color: #aaa; }
+    li.running .badge { background: #2a3a55; color: #9cc4ff; }
+    li.pass    .badge { background: #11331a; color: #6ee7a0; }
+    li.fail    .badge { background: #3a1313; color: #ff8a8a; }
+    li.skip    .badge { background: #2e2a12; color: #ddc066; }
+    li .cls { display: inline-block; font-size: .72rem; font-weight: 700; padding: .05rem .35rem; border-radius: 4px; white-space: nowrap; }
+    li .cls:empty { display: none; }
+    .cls-sealed   { background: #11331a; color: #6ee7a0; }
+    .cls-negative { background: #33240f; color: #f0b35e; }
+    .cls-degraded { background: #2e2a12; color: #ddc066; }
+    .cls-timeout  { background: #3a1313; color: #ff8a8a; }
+    li .label { flex: 0 1 auto; }
+    li .detail { opacity: .75; }
+    pre { background: rgba(127,127,127,.12); padding: .6rem .8rem; border-radius: 6px; overflow: auto; }
+    code { background: rgba(127,127,127,.18); padding: 0 .25rem; border-radius: 3px; }
+    .btn { font: inherit; padding: .4rem .9rem; border-radius: 6px; border: 1px solid #888; background: transparent; cursor: pointer; }
+  </style>
 </head>
 <body>
-<h1>CK.Lib.Js — real-path verification</h1>
-<p class="meta">
-  Runs <a href="/cklib/tests/real-path/harness.js"><code>/cklib/tests/real-path/harness.js</code></a>
-  against <code>wss://ck-lib-js.localhost/wss</code> → relay → pgCK.
-  Not a mock; not psql. See <a href="/cklib/tests/real-path/README.md">README</a>.
-  &nbsp;|&nbsp;
-  <a href="/">probe</a> · <a href="/cklib/">cklib</a> · <a href="/wss/">wss</a>
-</p>
+  <h1>CK.Lib.Js v1.5.x keystone verification — full handle surface</h1>
+  <p class="sub">Drives the dispatch-only L2 surface — one import <code>{ CK }</code> from <code>/cklib/ck.js</code> —
+  against the live <code>ck-lib-js-allinone</code> (NATS WSS auto-detected: <code>wss://&lt;host&gt;/wss</code> via Envoy, <code>ws://&lt;host&gt;:9222</code> direct).
+  Core ops + lifecycle (<code>transition</code>), integrity (<code>validate</code>/<code>verify</code>/<code>provenance</code>),
+  reads (<code>reach</code>/<code>snapshot</code>), the governance trio and <code>concept.match</code>.
+  Each op badge is labeled <strong>TYPED-SEALED</strong> / <strong>TYPED-NEGATIVE (stub)</strong> /
+  <strong>DEGRADED</strong> / <strong>TIMEOUT</strong> from the raw dispatch trace — the run goes green
+  op-by-op as the keystone bundle lands.
+  Skip ops via <code>?skip=transition,gov,match</code> or run a subset via <code>?only=create,query</code>
+  (keys: read, create, query, transition, validate, verify, provenance, reach, snapshot, gov, match).</p>
 
-<div id="result" class="panel pending">
-  <div class="marker" id="status">⌛ Loading modules…</div>
-  <div id="detail"></div>
-</div>
+  <div id="summary"></div>
 
-<button id="rerun" style="display:none" onclick="run()">Re-run</button>
+  <h2>Steps</h2>
+  <ul id="steps"></ul>
 
-<script type="module">
-const $status = document.getElementById('status');
-const $detail = document.getElementById('detail');
-const $panel  = document.getElementById('result');
-const $rerun  = document.getElementById('rerun');
+  <p style="margin-top:1rem"><button class="btn" onclick="location.reload()">Re-run</button></p>
 
-function renderTable(obj, label) {
-  if (!obj || typeof obj !== 'object') return '';
-  const rows = Object.entries(obj).map(([k, v]) => {
-    const cls = v === true ? 'pass' : v === false ? 'fail-cell' : 'skip';
-    const sym = v === true ? '✓' : v === false ? '✗' : '—';
-    return `<tr><td>${k}</td><td class="${cls}">${sym} ${String(v)}</td></tr>`;
-  }).join('');
-  return rows ? `<table><thead><tr><th>${label}</th><th>result</th></tr></thead><tbody>${rows}</tbody></table>` : '';
-}
+  <h2>Resolved config</h2>
+  <pre id="config-dump">(resolving…)</pre>
 
-async function run() {
-  $panel.className = 'panel pending';
-  $status.textContent = '⌛ Loading modules…';
-  $detail.innerHTML = '';
-  $rerun.style.display = 'none';
-
-  try {
-    const { CK } = await import('/cklib/ck.js');
-    $status.textContent = '⌛ Running harness…';
-    const { runHarness } = await import('/cklib/tests/real-path/harness.js?t=' + Date.now());
-
-    const r = await runHarness(CK);
-
-    const allProven  = Object.values(r.proven || {}).every(Boolean);
-    const anyFail    = Object.values(r.enforcement || {}).some(v => v === false)
-                    || Object.values(r.degrade || {}).some(v => v === false)
-                    || (r.errors && r.errors.length > 0);
-    const ok = allProven && !anyFail;
-
-    $panel.className = 'panel ' + (ok ? 'ok' : 'fail');
-    $status.textContent = ok
-      ? '✓ allFormsProven — enforcement real, no degrades'
-      : '✗ harness reported failures';
-
-    $detail.innerHTML =
-      renderTable(r.proven, 'proven (form round-trips)') +
-      renderTable(r.enforcement, 'enforcement') +
-      renderTable(r.degrade, 'degrade (honest)') +
-      (r.errors && r.errors.length
-        ? `<pre>${r.errors.map(e => String(e)).join('\n')}</pre>`
-        : '') +
-      `<pre>${JSON.stringify(r, null, 2)}</pre>`;
-
-  } catch (e) {
-    $panel.className = 'panel fail';
-    $status.textContent = '✗ harness threw: ' + e.message;
-    $detail.innerHTML = `<pre>${e.stack || String(e)}</pre>`;
-  }
-  $rerun.style.display = '';
-}
-
-run();
-</script>
+  <script type="module">
+    import { run } from './harness.js';
+    run().catch(e => {
+      console.error('[v150] unhandled:', e);
+      const el = document.getElementById('summary');
+      el.textContent = `harness crashed: ${e.message}`;
+      el.className = 'bad';
+      console.log(`[v150] RESULT FAIL :: harness crashed: ${e.message}`);
+    });
+  </script>
 </body>
 </html>
