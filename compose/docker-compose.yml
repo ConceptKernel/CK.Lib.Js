@@ -1,0 +1,62 @@
+# compose/docker-compose.yml — CK.Lib.Js local dev all-in-one
+#
+# Self-contained, isolated bring-up for the ck-lib-js.localhost dev route
+# (see ../SPEC.CK-LIB-JS.v1.5.0-ENVOY-LOCALHOST.md).
+#
+# Everything is prefixed `ck-lib-js-` and uses non-default host ports
+# (57290–57293) so this never touches, and is never touched by, any other
+# local project (pgck/asciinator/etc.). The container bundles its own NATS +
+# Postgres, so a NATS action on its wire hits THIS database only.
+#
+# Image: the PUBLISHED, SLSA-Build-Provenance-v1-attested all-in-one
+#   ghcr.io/sporaxis-com/ociger-ck-allinone:v0.7.21 — pg_base v0.1.14 + pgRDF 0.6.6 +
+#   pgCK 0.4.14 + cklib 1.5.2 (byte-verified) + s6-overlay + busybox httpd + relay shim.
+#   Verify: gh attestation verify oci://ghcr.io/sporaxis-com/ociger-ck-allinone:v0.7.21 \
+#             --repo sporaxis-com/oci-germination
+#   Override with: CK_ALLINONE_IMAGE=<ref> docker compose up -d
+#
+# Bind-mounts (dev-only; override baked /app/cklib with live workspace files):
+#   ../ck.js          → /app/cklib/ck.js          (L2 facade — live editing)
+#   ../ck-client.js   → /app/cklib/ck-client.js   (L0 transport — live editing)
+#   ../ck-store.js    → /app/cklib/ck-store.js     (L1 cache — live editing)
+#   ../vendor         → /app/cklib/vendor           (vendored ESM deps — live)
+#   ../tests          → /app/cklib/tests            (test harness — /cklib/tests/real-path/)
+#   ../tests/real-path → /app/web2                  (real-path harness at /web2/ directly)
+#
+# First wake on a FRESH volume brings up the pgCK role floor + the
+# ckp.dispatch SECURITY-DEFINER door (and sets ck_participant's password from
+# OCIGER_CK_PARTICIPANT_PASSWORD). It does NOT auto-create a kernel board —
+# run the one-time ckp.bootstrap_kernel + ontology load from README.md §First boot.
+
+name: ck-lib-js
+
+services:
+  ck-lib-js-allinone:
+    image: ${CK_ALLINONE_IMAGE:-ghcr.io/sporaxis-com/ociger-ck-allinone:v0.7.21@sha256:3385a0a35647e40988bef6d7d08dd1fd83dd60c35ed0479db38409d79fd9ec96}
+    container_name: ck-lib-js-allinone
+    restart: unless-stopped
+    environment:
+      # Postgres superuser password (this DB is isolated to ck-lib-js).
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-pgcklocal}
+      # First-wake bundle: sets the ck_participant role password at first boot.
+      # If unset, the image emits a NOTICE that ck_participant has no password.
+      OCIGER_CK_PARTICIPANT_PASSWORD: ${OCIGER_CK_PARTICIPANT_PASSWORD:-ckparticipant}
+    ports:
+      - "57290:8000"   # web/api (busybox httpd / web2)  ← Envoy ck-lib-js_web_upstream
+      - "57291:9222"   # NATS WSS (nats-server websocket) ← Envoy ck-lib-js_nats_wss_upstream
+      - "57292:4222"   # NATS client (TCP) — used by the host-side dev-outbox-drain
+      - "57293:5432"   # PostgreSQL 17 (pgrdf + pgCK) — the kernel's own isolated DB
+    volumes:
+      - ck-lib-js-pgdata:/var/lib/postgresql/data
+      # Dev bind-mounts: override baked /app/cklib with live workspace files
+      - ../ck.js:/app/cklib/ck.js:ro
+      - ../ck-client.js:/app/cklib/ck-client.js:ro
+      - ../ck-store.js:/app/cklib/ck-store.js:ro
+      - ../vendor:/app/cklib/vendor:ro
+      - ../tests:/app/cklib/tests:ro
+      # web2: real-path harness UI at https://ck-lib-js.localhost/web2/
+      - ../web2:/app/web2:ro
+
+volumes:
+  ck-lib-js-pgdata:
+    name: ck-lib-js-pgdata

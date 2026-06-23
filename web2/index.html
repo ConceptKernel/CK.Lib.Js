@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CK.Lib.Js — real-path verification</title>
+<style>
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 800px; margin: 3rem auto; padding: 0 1rem; color: #1a1a1a; }
+  h1 { margin-bottom: 0.25rem; }
+  .meta { color: #666; margin-bottom: 1.5rem; font-size: 0.9rem; }
+  .meta a { color: #0366d6; }
+  .panel { border: 1px solid #ddd; border-radius: 6px; padding: 1rem 1.25rem; margin: 1rem 0; }
+  .ok   { border-color: #1aaa3d; background: #f3fff5; }
+  .fail { border-color: #c92020; background: #fff5f5; }
+  .pending { border-color: #888; background: #f8f8f8; }
+  .marker { font-weight: 700; margin-bottom: 0.5rem; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.88rem; margin-top: 0.75rem; }
+  th, td { text-align: left; padding: 0.3rem 0.5rem; border-bottom: 1px solid #eee; }
+  th { background: rgba(0,0,0,0.04); }
+  .pass { color: #1aaa3d; font-weight: 700; }
+  .fail-cell { color: #c92020; font-weight: 700; }
+  .skip { color: #888; }
+  pre { background: #f4f4f4; padding: 0.5rem; border-radius: 4px; overflow-x: auto; font-size: 0.82em; margin-top: 0.75rem; }
+  code { font-family: ui-monospace, Menlo, Consolas, monospace; background: #f4f4f4; padding: 0.1rem 0.3rem; border-radius: 3px; }
+  button { padding: 0.4rem 1rem; cursor: pointer; border: 1px solid #ccc; border-radius: 4px; background: #fff; font-size: 0.9rem; margin-top: 0.5rem; }
+  button:hover { background: #f5f5f5; }
+</style>
+</head>
+<body>
+<h1>CK.Lib.Js — real-path verification</h1>
+<p class="meta">
+  Runs <a href="/cklib/tests/real-path/harness.js"><code>/cklib/tests/real-path/harness.js</code></a>
+  against <code>wss://ck-lib-js.localhost/wss</code> → relay → pgCK.
+  Not a mock; not psql. See <a href="/cklib/tests/real-path/README.md">README</a>.
+  &nbsp;|&nbsp;
+  <a href="/">probe</a> · <a href="/cklib/">cklib</a> · <a href="/wss/">wss</a>
+</p>
+
+<div id="result" class="panel pending">
+  <div class="marker" id="status">⌛ Loading modules…</div>
+  <div id="detail"></div>
+</div>
+
+<button id="rerun" style="display:none" onclick="run()">Re-run</button>
+
+<script type="module">
+const $status = document.getElementById('status');
+const $detail = document.getElementById('detail');
+const $panel  = document.getElementById('result');
+const $rerun  = document.getElementById('rerun');
+
+function renderTable(obj, label) {
+  if (!obj || typeof obj !== 'object') return '';
+  const rows = Object.entries(obj).map(([k, v]) => {
+    const cls = v === true ? 'pass' : v === false ? 'fail-cell' : 'skip';
+    const sym = v === true ? '✓' : v === false ? '✗' : '—';
+    return `<tr><td>${k}</td><td class="${cls}">${sym} ${String(v)}</td></tr>`;
+  }).join('');
+  return rows ? `<table><thead><tr><th>${label}</th><th>result</th></tr></thead><tbody>${rows}</tbody></table>` : '';
+}
+
+async function run() {
+  $panel.className = 'panel pending';
+  $status.textContent = '⌛ Loading modules…';
+  $detail.innerHTML = '';
+  $rerun.style.display = 'none';
+
+  try {
+    const { CK } = await import('/cklib/ck.js');
+    $status.textContent = '⌛ Running harness…';
+    const { runHarness } = await import('/cklib/tests/real-path/harness.js?t=' + Date.now());
+
+    const r = await runHarness(CK);
+
+    const allProven  = Object.values(r.proven || {}).every(Boolean);
+    const anyFail    = Object.values(r.enforcement || {}).some(v => v === false)
+                    || Object.values(r.degrade || {}).some(v => v === false)
+                    || (r.errors && r.errors.length > 0);
+    const ok = allProven && !anyFail;
+
+    $panel.className = 'panel ' + (ok ? 'ok' : 'fail');
+    $status.textContent = ok
+      ? '✓ allFormsProven — enforcement real, no degrades'
+      : '✗ harness reported failures';
+
+    $detail.innerHTML =
+      renderTable(r.proven, 'proven (form round-trips)') +
+      renderTable(r.enforcement, 'enforcement') +
+      renderTable(r.degrade, 'degrade (honest)') +
+      (r.errors && r.errors.length
+        ? `<pre>${r.errors.map(e => String(e)).join('\n')}</pre>`
+        : '') +
+      `<pre>${JSON.stringify(r, null, 2)}</pre>`;
+
+  } catch (e) {
+    $panel.className = 'panel fail';
+    $status.textContent = '✗ harness threw: ' + e.message;
+    $detail.innerHTML = `<pre>${e.stack || String(e)}</pre>`;
+  }
+  $rerun.style.display = '';
+}
+
+run();
+</script>
+</body>
+</html>
