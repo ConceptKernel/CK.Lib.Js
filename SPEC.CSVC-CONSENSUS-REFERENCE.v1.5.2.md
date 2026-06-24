@@ -129,4 +129,27 @@ will surface any genuine CSVC-shape gap (vs the already-solved substrate ones).
 The doc is **mostly chasing solved work** because it's built on a 2026-06-15 substrate. Bump its floor to
 v0.7.20 / pgCK 0.4.14 / **cklib v1.5.2**, then: tick **§4** (released), **BLK-1**, **FIX-C**, and **G7 (for
 ck-lib-js)** as ✅. Re-scope **G7** to the harness's `ck-bus.mjs` only. The remaining open items collapse to:
-**CSVC seed**, **F-A/T8**, **F-C/T9**, and the **harness landing (G2/G3/G4)** — the genuine post-v1.5.x epoch.
+**CSVC seed** (done 2026-06-24), **F-A/T8**, **F-C/T9**, the **harness landing (G2/G3/G4)**, and **D3
+concept.match** (§6) — the genuine post-v1.5.x epoch.
+
+---
+
+## 6. D3 diagnosis — `concept.match` (the one residual), proven NOT a cklib gap
+
+CSVC's `S9 concept.match → 0` is precisely diagnosed (real-path, my demo kernel, 2026-06-24):
+
+**`concept.match` WORKS when the instance's label maps to `rdfs:label`.** Proof — a `Goal` (its shape
+declares `rdfs:label`) created with `{label:'Weekly release train policy'}` → `match('release')`,
+`match('train')`, `match('policy')` each return that Goal, **ranked**. So the client `match(term)` is
+correct, the governed plan runs, and the projection indexes `rdfs:label`.
+
+**CSVC's `ConsensusTopic.label` is almost certainly NOT `rdfs:label`** (likely `urn:ckp:csvc/prop/label`).
+pgCK's T6 projection trigger indexes `rdfs:label` only, so CSVC's labels never enter the search graph → 0.
+
+**Two fixes (pick one):**
+- **Cheap, CSVC-side — try first:** declare the `ConsensusTopic` label AS `rdfs:label` in `csvc.kernel.ttl`
+  (then `create_typed` maps `label` → `rdfs:label`, which the projection indexes). **No pgCK change** —
+  likely closes D3 immediately.
+- **General, pgCK-side (the D3 NOTIFIES):** have the T6 projection coalesce the kernel's *declared* label
+  property (not only `rdfs:label`). The clean boundary ask — file with the CSVC session as the repro; cklib
+  confirms the client side is correct either way.
