@@ -9,6 +9,14 @@ and its gaps are our truest integration signal.
 **Authoritative substrate floor (verified 2026-06-19, live real-path):** `ck-lib-js` **v1.5.2** (shipped,
 attested) · `ociger-ck-allinone` **v0.7.20** · pgCK **0.4.14** (T1–T6 + `adopt_kernel_ttl` + `_resolve_ref`).
 
+> **✅ PROVEN LIVE END-TO-END — 2026-06-24 (CSVC).** CSVC seeded its kernel
+> (`adopt_kernel_ttl(csvc.kernel.ttl, 'demo')` → **143 quads** into `urn:ckp:demo/kernel/ck`) and ran the
+> full session through the **real browser cklib client** (Playwright, `csvc.alignment.session.spec.js`,
+> 1 passed): **S1→S8 seal `verified:true` — 8 of 9 sequences.** `S6` (`target_kernel`) confirms **cklib ≥
+> 1.5.2**; `S2` `pending→discarded` legal confirms the sealed transition map (old D2 gap closed). The one
+> soft step is **`S9 concept.match → 0`** — a pgCK label-index gap (**D3**), *not* cklib. This is the
+> end-to-end proof §4 recommended: the substrate ghosts were already dead; the session runs.
+
 > **Why this doc exists / the trigger.** A `NOTIFIES.pgCK-and-CKlib-alignment.v3.9.1` doc (dated 2026-06-24
 > but built on a **2026-06-15** substrate snapshot: v0.7.18 / pgCK 0.4.13 / "v1.5.1 not yet tagged") flags
 > several items as blocking the CSVC session. **Most are already solved** — that snapshot is ~9 days and two
@@ -34,6 +42,19 @@ The session preserves both, seals the conflict, and resolves by consensus — pr
 | **S6** spawn | `instance.create {kind:action, target_kernel:'Build'}` | turn the decision into a queued task |
 | **S8** prove | `instance.provenance` + `instance.verify` | the whole alignment re-verifiable from one URN |
 | **S9** propose | `concept.match {term}` | the kernel surfaces the next inconsistency |
+
+---
+
+## 1.5 Consumer gotchas (found live by CSVC, 2026-06-24) — payload details every consumer must get right
+
+1. **`set_transition_map` detail key is `targetClass` (the full class IRI), NOT `type`.** Passing `type` →
+   `op_translate_failed: targetClass must be an IRI`. The governance op binds the transition map to the
+   class's `sh:targetClass`. (The narrative draft showed `{type, map}` — that's the bug; use `{targetClass, map}`.)
+2. **Id-form split.** Governance `vote`/`apply` take the **full proposal IRI** (`{about:'<proposal IRI>'}`);
+   instance reads/writes (`get`/`transition`/`reach`/…) take the **bare id**. pgCK `_resolve_ref` (v0.4.14)
+   resolves the bare id inside `reach`/`materialize_edge`, but governance `about` must be the full IRI.
+3. **Seed graph = `urn:ckp:<project>/kernel/ck`** where `<project>` is the server-set `ckp.project` (CSVC runs
+   `'demo'`). Seed with `adopt_kernel_ttl` (v0.4.14) — `load_kernel` collides on the bootstrap-owned graph.
 
 ---
 
@@ -84,10 +105,12 @@ There is **no cklib or pgCK verb the session needs that is missing or broken** o
 
 ## 4. Runnability verdict
 
-**The consensus session (S1→S8) is runnable now** on `ck-lib-js v1.5.2` / `ociger v0.7.20` / pgCK 0.4.14,
-**given CSVC's `seed.ttl` is sealed into `urn:ckp:csvc/kernel/ck`** (`adopt_kernel_ttl`) and each participant
-is on a verified (JWT) connection. The verbs are all real and live-verified; the demo-bundle enforcement that
-was vacuous is now real; the bare-id `reach` and the `target_kernel` create bug are both fixed.
+**The consensus session (S1→S8) is PROVEN** — CSVC ran it live end-to-end on **2026-06-24** through the real
+browser cklib client (`csvc.alignment.session.spec.js`, 1 passed): **8/9 sequences seal `verified:true`** on
+`ck-lib-js v1.5.2` / `ociger v0.7.20` / pgCK 0.4.14, with CSVC's `seed.ttl` sealed into
+`urn:ckp:demo/kernel/ck` (`adopt_kernel_ttl`, 143 quads). The verbs are all real and live-verified; the
+demo-bundle enforcement that was vacuous is now real; the bare-id `reach` and the `target_kernel` create bug
+are both fixed. **The only residual is `S9 concept.match → 0` (pgCK D3, label-index — not cklib).**
 
 **What genuinely remains is outside cklib:** CSVC's seed (CSVC owns), full multi-party identity (F-A/T8,
 upstream), per-session isolation (F-C/T9, for concurrency), and S6's downstream task execution (the harness).
