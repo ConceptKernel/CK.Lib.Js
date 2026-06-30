@@ -47,7 +47,7 @@ const isUnknownAffordance = (r) => r && r.ok === false && (r.error === 'unknown_
 
 // pgCK ≤0.4.x replies carry no uniform `.result`; each verb returns its own field. Map them so the
 // `.result`-keyed ingest + typed reads fire. (Reply-envelope normalization is pgCK design-Q1; per-verb
-// adapters until pgCK confirms — see _WIP NOTIFIES.pgCK.v0.4.2.wire-contract-pin-operations.)
+// adapters until pgCK confirms the uniform reply envelope.)
 const REPLY_FIELD = {
   'instance.query': 'rows', 'instances.list': 'instances',
   'kernels.list': 'kernels', 'instance.get': 'instance',

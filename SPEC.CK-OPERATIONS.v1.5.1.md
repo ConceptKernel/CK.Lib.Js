@@ -6,7 +6,7 @@
 | Date | 2026-06-18 |
 | Grounding | `ck-lib-js:1.5.0` (ghcr.io/conceptkernel/ck-lib-js:1.5.0) |
 | Status | **Normative wire contract** for all consumers (browser, harness, agent) connecting to a pgCK concept kernel over NATS-WSS |
-| Visibility | Local _WIP — distributed artifacts never carry a spec |
+| Visibility | Public consumer documentation — distributed artifacts (npm/OCI) never carry a spec |
 
 This document canonicalises the **NATS subject grammar, headers, codec, and dispatch routing** that
 `ck-client.js` (L0 transport) implements at v1.5.0. It is the reference any consumer needs to produce

@@ -1,7 +1,7 @@
-// _WIP/smoke-ck-client.mjs — gov-routing regression (G5a). Guards the CSVC-found timeout bug
-// (SPIKE.ONTOLOGICAL-ASSEMBLY-DRIVER v0.7): governed verbs MUST route to the gov door (input.kernel.<gov>.
-// action.<verb>) and the gov reply MUST be subscribed; only delegated agent.* ride the target kernel.
-// Mirrors pgCK's s48. Run: node _WIP/smoke-ck-client.mjs    (gitignored)
+// smoke-ck-client.mjs — gov-routing regression (G5a). Guards a timeout seen when a NON-GOV kernel
+// handle dispatches governed verbs: governed verbs MUST route to the gov door
+// (input.kernel.<gov>.action.<verb>) and the gov reply MUST be subscribed; only delegated agent.*
+// ride the target kernel. Run: node tests/smoke-ck-client.mjs
 import CKClient from '../ck-client.js';
 
 let pass = 0, fail = 0;
@@ -25,19 +25,19 @@ function mkClient(kernel, gov) {
   return c;
 }
 
-console.log('ck-client.js — gov-routing regression (G5a; SPIKE v0.7; mirrors pgCK s48)');
+console.log('ck-client.js — gov-routing regression (G5a)');
 
-// A NON-GOV kernel handle (the CSVC.ConsensusTopic case that timed out before the fix)
-const k = mkClient('CSVC.ConsensusTopic', 'pgCK');
-const r = await k.dispatch('instance.create', 'ckp://Kernel#CSVC.ConsensusTopic', { type: 'urn:ckp:csvc/type/ConsensusTopic' });
+// A NON-GOV kernel handle (the case that timed out before the fix)
+const k = mkClient('Demo.Board', 'pgCK');
+const r = await k.dispatch('instance.create', 'ckp://Kernel#Demo.Board', { type: 'urn:ckp:demo/type/Board' });
 ok('governed create → gov door, not the target kernel', k.__lastSubject === 'input.kernel.pgCK.action.instance.create');
 ok('governed create resolves (no timeout) → ok+verified', r.ok === true && r.verified === true);
 
-await k.dispatch('instance.query', 'ckp://Kernel#CSVC.ConsensusTopic', {});
+await k.dispatch('instance.query', 'ckp://Kernel#Demo.Board', {});
 ok('governed query → gov door', k.__lastSubject === 'input.kernel.pgCK.action.instance.query');
 
-await k.dispatch('agent.execute', 'ckp://Kernel#CSVC.ConsensusTopic', {});
-ok('delegated agent.execute → TARGET kernel (the harness), not gov door', k.__lastSubject === 'input.kernel.CSVC.ConsensusTopic.action.agent.execute');
+await k.dispatch('agent.execute', 'ckp://Kernel#Demo.Board', {});
+ok('delegated agent.execute → TARGET kernel (the harness), not gov door', k.__lastSubject === 'input.kernel.Demo.Board.action.agent.execute');
 
 k._subscribeAll();
 ok('non-gov handle subscribes the gov reply (result.kernel.pgCK.>)', k.__subs.includes('result.kernel.pgCK.>'));

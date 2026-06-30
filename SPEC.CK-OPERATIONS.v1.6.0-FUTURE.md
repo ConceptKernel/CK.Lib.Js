@@ -385,8 +385,8 @@ therefore carries `verified:true` + a `proof_digest` and is independently re-ver
 - **Payload shape (CORRECTED 2026-06-15 — G3 closed):**
   `{ source: from, predicate, target: to, body?, event: true }`.
   The prior shape `{ source: to, predicate, body, event: true }` omitted `target`, preventing the edge
-  from sealing (`instance.link` requires `{source, predicate, target}`). Confirmed live by CSVC
-  cross-kernel verification 2026-06-14 — the cross-kernel edge could not seal until `target` was
+  from sealing (`instance.link` requires `{source, predicate, target}`). Confirmed live by a
+  reference consumer — the cross-kernel edge could not seal until `target` was
   supplied. **cklib fix (TE-pending):** `ck.js notify(from, predicate, to, body?)` — `from` is the
   source concept URN, `to` is the target concept/kernel URN; predicate MUST be a declared IRI in the
   kernel's property set. To declare a kernel-specific predicate: `propose→vote→apply('add_property',{…})`.

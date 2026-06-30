@@ -3,12 +3,10 @@
 Canonical bring-up for the CK.Lib.Js local dev/verification route. Stands up an
 **isolated** all-in-one (its own NATS + Postgres) behind the shared local TLS Envoy
 at `https://ck-lib-js.localhost`, so the stripped [`ck-client.js`](../ck-client.js) +
-the `_WIP/verify/` harness can be exercised against a real NATS-over-WSS + governed
+the local verify harness can be exercised against a real NATS-over-WSS + governed
 Postgres.
 
-Spec: [`../SPEC.CK-LIB-JS.v1.5.0-ENVOY-LOCALHOST.md`](../SPEC.CK-LIB-JS.v1.5.0-ENVOY-LOCALHOST.md).
-Lineage: the verified runbook `_WIP/ref-SPEC.ENVOY.LOCALHOST.ck-lib-js.v0.1.md` +
-pgCK's `SPEC.ENVOY.LOCALHOST.v0.3`.
+Local-dev only — not part of the published client surface.
 
 Files:
 
@@ -137,7 +135,7 @@ This route is the live target for the v1.5.0 alpha verification:
 
 - The stripped [`ck-client.js`](../ck-client.js) — `CKClient` connect → JWT login →
   floored `ckp.dispatch` verb — against this isolated pgCK.
-- The browser harness in `_WIP/verify/` (index.html + harness.js) — point its `?wss=` at
+- The local browser harness (index.html + harness.js) — point its `?wss=` at
   `wss://ck-lib-js.localhost/wss`.
 
 ## Teardown

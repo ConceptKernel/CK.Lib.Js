@@ -83,7 +83,7 @@ Independent of F-A/F-C. Batches when enough items accumulate.
 | `NOTIFIES.oci-germination.v0.7.19.shape-graph-mismatch` (BLK-1) | RESPONSE received; relayed to pgCK; awaiting pgCK reconcile → v0.7.20 |
 | `NOTIFIES.SuperAiHarness3000.v3.9.harness-review-convergence` | Awaiting RESPONSE (3 asks: agent.* names, notify convergence, facts shape) |
 | pgCK reach IRI bug (FIX-C) | NOTIFY not yet written — needed |
-| pgCK §7.1–§7.4 (preview, strict detail, inverse/undo, breaking-change guard) | Carried from CSVC RCA — NOTIFY to pgCK pending |
+| pgCK §7.1–§7.4 (preview, strict detail, inverse/undo, breaking-change guard) | Carried from a consumer RCA — pgCK ask pending |
 | `PD-1` base `ckp:notifies` predicate | NOTIFY to pgCK pending |
 
 ---

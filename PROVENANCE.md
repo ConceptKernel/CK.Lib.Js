@@ -105,9 +105,33 @@ This iteration discipline is normative — see `memory/feedback_tag_must_pair_wi
 ## Hooks against accidental local pushes
 
 - `.github/workflows/` is the only path that may run `docker buildx --push` or `gh release create`
-- The former local `build-ck-lib-js.sh` / `smoke-ck-lib-js.sh` scripts were **retired (v1.4.1)** to `_WIP/deprecated/`: `build-ck-lib-js.sh` ran a workstation `docker buildx --push`, which **violated Rule 1** — removing it eliminates the bypass. All builds/pushes run only via `.github/workflows/oci-publish.yml`.
-- The repo's `.gitignore` excludes `_WIP/` so working coordination doesn't leak into history
+- The former local build/smoke helper scripts were **retired (v1.4.1)** from the tracked tree: one ran a workstation `docker buildx --push`, which **violated Rule 1** — removing it eliminates the bypass. All builds/pushes run only via `.github/workflows/oci-publish.yml`.
+- The repo's `.gitignore` excludes local working/coordination folders so they don't leak into history
 - If you find yourself typing `docker push ghcr.io/conceptkernel/...` or `gh release create v...` from your shell, stop. Push the tag instead.
+
+## Cross-repo coordination & public-repo disclosure
+
+Coordination between this library and its neighbouring repositories (the substrate, the all-in-one
+bundle, downstream consumers) happens **on GitHub** — **issues and pull requests for concrete
+defects**, and a **per-repo project board for forward plans and feature tracks**. Any earlier
+file-based coordination notes are a **local drafting step only**; the published, authoritative
+record lives in GitHub.
+
+**These repositories are public.** Everything written into an issue, a pull request, a project
+card, a commit message, or any tracked file is world-readable and permanent. Before posting,
+sanitise:
+
+- **No local/workstation paths** — home directories, absolute working paths, scratch/working folders.
+- **No infrastructure or operator identifiers** — host/cluster/fleet names, internal endpoints,
+  or account handles tied to private infrastructure.
+- **No unreleased internal specifications** — design notes and specs that have not been
+  deliberately published. Reference behaviour by its **public surface** (verb, version, OCI digest),
+  not by an internal document name or contents.
+- **No secrets** — tokens, credentials, or digests still in flight.
+
+Draft with full detail privately; post a **public-safe summary** that a stranger reading the repo
+should be able to see without learning anything about private infrastructure. When in doubt, leave
+it out and ask.
 
 ## Audit trail
 

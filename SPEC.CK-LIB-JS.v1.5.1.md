@@ -147,7 +147,7 @@ k.link('urn:ckp:demo/task/1234', 'urn:ckp:demo/prop/blocks', 'urn:ckp:demo/task/
 #### `k.notify(from, predicate, to, body?)` → `{ok, id, proof_digest, seq}` ✅ FIX-A
 
 ```js
-k.notify('urn:ckp:csvc/topic/42', 'urn:ckp:csvc/prop/notifies', 'urn:ckp:demo/task/1234', { msg: 'ready' })
+k.notify('urn:ckp:demo/topic/42', 'urn:ckp:demo/prop/notifies', 'urn:ckp:demo/task/1234', { msg: 'ready' })
 ```
 
 Sugar over `instance.link` with `event:true`. Carries `{source:from, predicate, target:to, body,

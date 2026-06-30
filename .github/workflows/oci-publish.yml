@@ -81,6 +81,51 @@ jobs:
             "oci://ghcr.io/conceptkernel/ck-lib-js:${{ steps.v.outputs.version }}" \
             --repo "${{ github.repository }}"
 
+      # ── npm publish (provenance-attested), gated on the OCI release being sound ──────────────
+      # Reuses the job's id-token:write (the same OIDC identity that signs the OCI attestation).
+      # `--provenance` mints a Sigstore SLSA attestation linking the package to this tag + run.
+      - name: Set up Node for npm publish
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Publish to npm with provenance (idempotent)
+        env:
+          # Token path: set the NPM_TOKEN repo secret (npm automation/granular token).
+          # Token-less path: leave NPM_TOKEN unset and configure npm Trusted Publishing
+          # (OIDC) for @conceptkernel/cklib on npmjs.org — then npm uses this job's id-token.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          VER="${{ steps.v.outputs.version }}"
+          PKG_VER="$(node -p "require('./package.json').version")"
+          if [ "${PKG_VER}" != "${VER}" ]; then
+            echo "::error::package.json version (${PKG_VER}) != tag (${VER}); release ritual must bump package.json"
+            exit 1
+          fi
+          if npm view "@conceptkernel/cklib@${VER}" version >/dev/null 2>&1; then
+            echo "npm: @conceptkernel/cklib@${VER} already published — skipping (re-run safe)."
+          else
+            npm publish --provenance --access public
+          fi
+
+      - name: Confirm npm — version live, 'latest' points here, provenance attached
+        run: |
+          set -euo pipefail
+          VER="${{ steps.v.outputs.version }}"
+          PUBLISHED="$(npm view "@conceptkernel/cklib@${VER}" version)"
+          LATEST="$(npm view "@conceptkernel/cklib" dist-tags.latest)"
+          ATT="$(npm view "@conceptkernel/cklib@${VER}" --json | jq -r '.dist.attestations.url // "MISSING"')"
+          echo "npm published=${PUBLISHED} | dist-tag latest=${LATEST} | provenance=${ATT}"
+          test "${PUBLISHED}" = "${VER}"   # the version is live on the registry
+          test "${LATEST}" = "${VER}"      # 'latest' resolves to this release (the confirmation gate)
+          if [ "${ATT}" = "MISSING" ]; then
+            echo "::warning::npm provenance attestation NOT found for ${VER} — publish lacked --provenance or OIDC was unavailable"
+          else
+            echo "npm provenance attestation present → ${ATT}"
+          fi
+
       - name: Resolve per-arch digests
         id: digests
         run: |
@@ -109,7 +154,7 @@ jobs:
           cat > LATEST.md <<EOF
           # CK.Lib.Js — latest published artifacts
 
-          One publishable surface ships from this repo: the **OCI static bundle** (\`ckp:static\` designation) — the CKP **concept-kernel JS client (dispatch-only)** shipped as a Shape A filesystem-layer OCI image per [SPEC.OCI.BUNDLE.v0.4](https://github.com/sporaxis-com/oci-germination/blob/main/SPEC.OCI.BUNDLE.v0.4.md). The npm package \`@conceptkernel/cklib\` is staged in \`package.json\` but not yet released. See [Repo packages view](https://github.com/${REPO}/pkgs/container/ck-lib-js) for the full version history.
+          Two attested surfaces ship from this repo, both from the **same tag** in the same run: the **OCI static bundle** (\`ckp:static\`) per [SPEC.OCI.BUNDLE.v0.4](https://github.com/sporaxis-com/oci-germination/blob/main/SPEC.OCI.BUNDLE.v0.4.md), and the **npm package** [\`@conceptkernel/cklib\`](https://www.npmjs.com/package/@conceptkernel/cklib) published with Sigstore **provenance** (\`npm i @conceptkernel/cklib\`; verify with \`npm audit signatures\`). Both are attestation-gated: this file is rendered only after \`gh attestation verify\` (OCI) passed and npm \`latest\` was confirmed to resolve to this version. See [Repo packages view](https://github.com/${REPO}/pkgs/container/ck-lib-js) for OCI history.
 
           ## CK.Lib.Js OCI bundle — \`${TAG}\`
 
@@ -133,6 +178,7 @@ jobs:
           | Verify (CLI)          | \`gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:${VER} --repo ${REPO}\`            |
           | Release notes         | https://github.com/${REPO}/releases/tag/${TAG}                                                  |
           | Repo packages view    | https://github.com/${REPO}/pkgs/container/ck-lib-js                                             |
+          | npm package           | [\`@conceptkernel/cklib@${VER}\`](https://www.npmjs.com/package/@conceptkernel/cklib/v/${VER}) — also \`latest\`; Sigstore provenance, verify \`npm audit signatures\` |
 
           ## Verifying any artifact above
 

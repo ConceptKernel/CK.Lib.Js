@@ -1,5 +1,5 @@
-// _WIP/smoke-ck-store.mjs — local verification of the v1.5.0 typed-instance cache (no quads).
-// Run: node _WIP/smoke-ck-store.mjs   (gitignored; the tracked smoke location is an EI-P-2 decision)
+// smoke-ck-store.mjs — local verification of the typed-instance cache (no quads).
+// Run: node tests/smoke-ck-store.mjs
 import CKStore, { CKSubject, CKView, ckBind, instanceEdges } from '../ck-store.js';
 
 let pass = 0, fail = 0;

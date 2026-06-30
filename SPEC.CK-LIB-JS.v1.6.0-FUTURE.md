@@ -373,8 +373,8 @@ expressible at L2 since v1.4.2, and it now carries the v3.8→v3.9 migration):
 `notify` is **not a distinct `OP_VERB` entry** — it is sugar over the `link` verb:
 `do('instance.link', { source: from, predicate, target: to, body, event: true })`. The `from` argument
 is the **source** concept URN (the concept sending the notification); `to` is the **target** concept or
-kernel URN being addressed. Both are required for a sealed cross-kernel edge (confirmed by CSVC live
-verification 2026-06-14 — prior 3-arg form omitted `target`, preventing the edge from sealing). A declared
+kernel URN being addressed. Both are required for a sealed cross-kernel edge (confirmed live by a reference consumer — a prior
+3-arg form omitted `target`, preventing the edge from sealing). A declared
 predicate IRI MUST be supplied; use `propose→vote→apply('add_property',{…})` to declare a kernel-specific
 predicate if none of the base-ontology predicates fit. Retirement is a **sealed retraction**, not a
 delete — *"You cannot unseal a sealed fact. You can only seal a retraction."* (`VISION.v3.8.1` §2.1) →
@@ -455,7 +455,7 @@ await task.apply(p.id);                                                         
   **`add_property` detail shape (normative — RCA 2026-06-15):**
   ```js
   { op: 'add_property', detail: {
-      path:        '<full property IRI>',        // required — e.g. 'urn:ckp:csvc/prop/notifies'
+      path:        '<full property IRI>',        // required — e.g. 'urn:ckp:demo/prop/notifies'
       targetClass: '<full class IRI>',           // required — the type this property attaches to
       datatype:    '<XSD or class IRI>',         // required
       minCount:    0,   // ← OPTIONAL property.  0 = optional, 1 = required (DEFAULT if omitted)
@@ -470,7 +470,7 @@ await task.apply(p.id);                                                         
   **Reversibility:** a sealed type change is never a dead end. Propose the inverse (`modify_shape_constraint`
   with the corrected `minCount`, or `remove_property`) → vote → apply → epoch++. The prior decision is kept
   as sealed history; the new one is active. The app layer MAY offer "revert" as a convenience that
-  auto-proposes the inverse — this is an app-level pattern (CSVC G3), not a new pgCK verb.
+  auto-proposes the inverse — this is an app-level pattern, not a new pgCK verb.
 - `vote(proposalId, choice)` → `kernel.vote`; a human approval is an ordinary sealed `ckp:Vote`.
 - `apply(proposalId)` → `kernel.apply`; rejected unless quorum is satisfied.
 - **Shipped (pgCK CI-D + v0.4.5):** the plane is live and `apply` now **mutates the kernel type** — a

@@ -1,5 +1,5 @@
-// _WIP/smoke-ck.mjs — local verification of the L2 facade (ck.js) over a MOCK transport (no NATS).
-// Run: node _WIP/smoke-ck.mjs    (gitignored)
+// smoke-ck.mjs — local verification of the L2 facade (ck.js) over a MOCK transport (no NATS).
+// Run: node tests/smoke-ck.mjs
 import { CK, ConceptKernel, normalizeKernel } from '../ck.js';
 
 let pass = 0, fail = 0;

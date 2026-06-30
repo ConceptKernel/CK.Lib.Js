@@ -1,20 +1,20 @@
 # CK.Lib.Js Compliance & Requirements
 
-**Version:** 1.4.1  
-**Status:** stripped client (RDF tier removed) — v3.8 JWT/NATS transport contract  
-**Date:** 2026-06-10
+**Version:** 1.5.2  
+**Status:** dispatch-only concept-kernel client — CKP v3.9 (governed verbs, sealed provenance, typed reads)  
+**Date:** 2026-06-27
 
 ---
 
-> **Current state (v1.4.1 stripped) — supersedes the dated roadmap below.** CK.Lib.Js now ships a
-> **single module, `ck-client.js`** (`CKClient`): the NATS WSS transport with Keycloak JWT auth. The
-> client-side RDF tier (`CKHexStore`, quad store, `ck-rdf-bridge`) and the legacy render/page modules
-> were **removed** — no client RDF/quad/SHACL surface (aligned to the v3.9 "no pgRDF on the client"
-> direction). The OCI artifact is a **`ckp:static` `FROM scratch`** image (NOT a Node HTTP-server
-> bundle), built + attested only by `.github/workflows/oci-publish.yml` (see `PROVENANCE.md`). The
-> **transport contract below (subject families, JSON profile, pgCK governance split) remains accurate**;
-> the version table / "Dev HTTP server" / "bundle-ck-lib-js" / browser-SHACL-RDF items are historical
-> and no longer planned in this form. Forward dispatch-only surface: tracked for v1.5.0.
+> **Current state (v1.5.2 — dispatch-only) — supersedes the dated roadmap below.** CK.Lib.Js ships
+> **three vendored ESM modules** — `ck.js` (the L2 `CK.activate` → `ConceptKernel` facade), `ck-store.js`
+> (typed-instance cache), and `ck-client.js` (the NATS-WSS + JWT dispatch transport) — plus the vendored
+> NATS transport under `vendor/`. There is **no client RDF/quad/SHACL/query surface**; every operation
+> compiles to a single governed dispatch on pgCK's one door (CKP v3.9 "Critical Isolation"). The OCI
+> artifact is a **`ckp:static` `FROM scratch`** image, built + attested only by
+> `.github/workflows/oci-publish.yml` (see `PROVENANCE.md`). The **transport contract below (subject
+> families, JSON profile, pgCK governance split) remains accurate**; the version table / "Dev HTTP
+> server" / "bundle-ck-lib-js" / browser-SHACL-RDF items are historical and no longer planned.
 
 ---
 
@@ -259,5 +259,4 @@ v1.1.0              v1.2.0            v1.3.0              v2.0.0
 
 - **Sporaxis OCI Germination:** https://github.com/sporaxis-com/oci-germination
 - **Bundle spec:** SPEC.OCI.BUNDLE.v0.3.md (Sporaxis repo) — CK.Lib.Js ships as a Shape A filesystem-layer OCI image (§1.1); downstream consumers declare it via `static_web[]` (routed) or `layer_sources[]` (additive merge) with `attestation_repo: ConceptKernel/CK.Lib.Js` per §3
-- **CKP v3.8 Subject families:** SPEC.CKP.v3.8-rc-06-nats.md (pgCK _WIP)
-- **pgCK Deployment:** SPEC.PGCK.DEPLOY.v0.1.md (pgCK _WIP)
+- **Substrate & governed dispatch:** [pgCK](https://github.com/styk-tv/pgCK) — CKP v3.9 "Critical Isolation"; the governed verb set, subject grammar, and deployment are defined there.
