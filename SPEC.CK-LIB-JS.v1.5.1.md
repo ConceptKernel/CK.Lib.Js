@@ -7,7 +7,7 @@
 | Status | **In progress — built, not yet tagged/released** |
 | Grounding | `ck-lib-js:1.5.0` shipped base · pgCK `v0.4.13` (T1–T6 attested) · `ociger-ck-allinone:v0.7.19` |
 | Supersedes | `SPEC.CK-LIB-JS.v1.5.0` (kept for history) |
-| Next (future) | `SPEC.CK-LIB-JS.v1.6.0-FUTURE.md` |
+| Next (roadmap) | GitHub project board + release milestones |
 
 **What v1.5.1 is:** typed-edge forms built-ahead on the task branch, now ready to ship. Adds
 TE-10 → TE-4 (kernel-derived typed operations, live-verified vs v0.7.19/pgCK 0.4.13), three
@@ -321,7 +321,7 @@ correct; the operations degrade honestly.
 
 ## 6. What is NOT in v1.5.1 (→ FUTURE)
 
-See `SPEC.ROADMAP.v1.6.0-FUTURE.CHECKLIST.md` for the complete post-v1.5.1 roadmap:
+See the [GitHub project board](https://github.com/orgs/ConceptKernel/projects/1) and release milestones for the complete post-v1.5.1 roadmap:
 
 - `instance.snapshot` with verified JWT + cache hydration (TE-3 / pgCK T8 F-A)
 - Per-session result routing on `session.{project}.{id}` (TE-2 / pgCK T9 F-C)
