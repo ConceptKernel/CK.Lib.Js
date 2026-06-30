@@ -206,7 +206,7 @@ dispatch-only **v1.5.0** lands on its own staged, pgCK-gate-aligned thread.
 > AGREED) + **oci-germination** (`intermediary-stripped-release`, confirmed: pipeline unchanged for the
 > smaller bundle — bundle spec is a layout-agnostic full-root merge).
 
-### Removed — client RDF tier + unused surface (archived locally to `_WIP/`, never in history)
+### Removed — client RDF tier + unused surface (archived locally, never in history)
 - **`ck-rdf-bridge.js`** (`toQuads`, `dataFactory`, `makeNativeDatasetCore`) + **`ck-hex-store.js`**
   (the 6-way hex-indexed RDF graph mirror, `toRdfJs`, `DatasetCore`) — no client RDF/quad surface remains.
 - **`vendor/anime.esm.min.js`** (vendored 3rd-party — supply-chain) + **`scripts/`** (dev tooling).
@@ -221,15 +221,15 @@ dispatch-only **v1.5.0** lands on its own staged, pgCK-gate-aligned thread.
 
 ### Known remaining vector (tracked) — RESOLVED in 1.4.2
 - `ck-client.js` runtime-loads `nats.ws` + `@msgpack/msgpack` from **esm.sh** (CDN) — needed for NATS;
-  vendoring to close the last supply-chain vector is the immediate next step (NOTIFIES.oci-germination
-  vendor+CVE thread). **Closed in [1.4.2]** by vendoring both into `vendor/*.js` (no runtime CDN).
+  vendoring to close the last supply-chain vector is the immediate next step (coordinated with
+  oci-germination). **Closed in [1.4.2]** by vendoring both into `vendor/*.js` (no runtime CDN).
 
 ---
 
 ## [1.4.0] — 2026-06-05
 
 ### Added — CKHexStore at repo root (`ck-hex-store.js`)
-The native, 6-way hex-indexed in-memory quad store lands at root and ships in the OCI bundle. Skeleton was incubated under `ck-hex-store/` since commit `36629b7`; promoted now per pgCK's APPROVAL of the design (see RESPONSE files in `_WIP/`).
+The native, 6-way hex-indexed in-memory quad store lands at root and ships in the OCI bundle. Skeleton was incubated under `ck-hex-store/` since commit `36629b7`; promoted now per pgCK's APPROVAL of the design (coordinated with pgCK).
 
 **Public API (per pgCK-RESPONSE §3 — web2 placeholder migration is a pure import-swap):**
 
@@ -273,9 +273,9 @@ All other strings → literals. The IRI-shape heuristic (`https?://`, `urn:`, `c
 
 ### Coordination
 Implements the v1.4 commitment from:
-- `_WIP/NOTIFIES.pgCK.v1.4.0.ckhexstore-decision-locked-roadmap.md` + its RESPONSE
-- `_WIP/NOTIFIES.pgCK.v1.4.0.ckhexstore-spec-v0.1-for-review.md` + its RESPONSE (APPROVED + 6 answers locked + esm.sh blocker eliminated)
-- `_WIP/ck-hex-store/SPEC.HEXSTORE.TESTING-WITHOUT-NATS-AND-PGCK.v3.8.1.md` T2 (esm.sh-removal closes the offline-testability gap; smoke can now exercise `toRdfJs()` end-to-end)
+- The CKHexStore decision + locked roadmap, coordinated with pgCK.
+- The CKHexStore spec review, coordinated with pgCK (APPROVED; 6 answers locked; esm.sh blocker eliminated).
+- Offline testability — esm.sh removal closes the gap; smoke can now exercise `toRdfJs()` end-to-end.
 
 ### Not in scope for v1.4 (deferred)
 - Real-pgCK corpus capture (testing spec T1) — needs live pgCK or pgCK-side CI publish (T4 ask in NOTIFY)
@@ -297,10 +297,10 @@ Per pgCK NOTIFY thread `v1.3.11.rdfjs-typed-message-store` RESPONSE-RESPONSE (4 
 Per pgCK NOTIFY thread §2: when `data['@id']` is absent, derive `subjectIri` from `conceptType` + the type's id predicate (e.g. for `Task` type, look for body key ending in `task_id`). **Never pick `urn:ckp:participant:*` values** as the subject — those identify the actor of the action, not the affected resource. Safe complement to pgCK's `ckp.seal` projection that stamps `@id` for sealed events.
 
 ### Fixed — broken `SPEC.CK.LIB.JS.PUBLIC.v1.0.md` link in LATEST.md template
-`SPEC.CK.LIB.JS.PUBLIC.v1.0.md` moved to gitignored `_WIP/` today (along with all other SPEC drafts). LATEST.md template in `oci-publish.yml` updated to drop the now-broken link.
+Internal SPEC drafts moved out of the public tree today. LATEST.md template in `oci-publish.yml` updated to drop the now-broken link.
 
 ### Coordination
-Closes pgCK's RESPONSE-RESPONSE corrections. Next: v1.4 CKHexStore promotion from `_WIP/ck-hex-store/` skeleton to root, using the same native DataFactory.
+Closes pgCK's review corrections. Next: v1.4 CKHexStore promotion from the incubated skeleton to root, using the same native DataFactory.
 
 ---
 
@@ -330,7 +330,7 @@ Literal typing: strings → `xsd:string` (or `namedNode` if they look IRI-shaped
 New export added: `import { toQuads } from '@conceptkernel/cklib/rdf-bridge'` (npm staging) or `import { toQuads } from '/cklib/ck-rdf-bridge.js'` (OCI bundle).
 
 ### Coordination
-Closes the v1.3.13 commitment from `_WIP/NOTIFIES.pgCK.v1.4.0.ckhexstore-decision-locked-roadmap.md`. The `toQuads()` bridge stays even though pgCK locked CKHexStore as the in-client store flavor (the bridge serves per-message conversion / export needs orthogonal to the store choice). If pgCK confirms the bridge is redundant given upcoming `CKHexStore.toRdfJs()`, it can be deprecated in v1.4+ — no removal in v1.3.x line.
+Closes the v1.3.13 commitment from the CKHexStore design coordination with pgCK. The `toQuads()` bridge stays even though pgCK locked CKHexStore as the in-client store flavor (the bridge serves per-message conversion / export needs orthogonal to the store choice). If pgCK confirms the bridge is redundant given upcoming `CKHexStore.toRdfJs()`, it can be deprecated in v1.4+ — no removal in v1.3.x line.
 
 ### Next
 - v1.4: `ck-hex-store.js` (CKHexStore — 6-way hex index over uint32 dictionary handles, no library dep, ~5 KB inline). Will be preceded by `SPEC.CK.LIB.JS.HEXSTORE.v0.1.md` for pgCK review.
@@ -340,7 +340,7 @@ Closes the v1.3.13 commitment from `_WIP/NOTIFIES.pgCK.v1.4.0.ckhexstore-decisio
 ## [1.3.12] — 2026-06-04
 
 ### Added — Typed envelope on delivered messages (additive)
-Per pgCK NOTIFY thread `v1.3.11.rdfjs-typed-message-store` (RESPONSE adjacent in pgCK `_WIP/`), the `event` / `result` / `broadcast` / `error` channels now deliver five additional fields alongside the existing `{ subject, headers, data, traceId }`:
+Per coordination with pgCK on the typed-message store, the `event` / `result` / `broadcast` / `error` channels now deliver five additional fields alongside the existing `{ subject, headers, data, traceId }`:
 
 | Field | Derivation | Use |
 |---|---|---|
@@ -356,7 +356,7 @@ Per pgCK NOTIFY thread `v1.3.11.rdfjs-typed-message-store` (RESPONSE adjacent in
 - For pre-`@id`-stamped bodies (non-sealed paths, transient errors, legacy events), `subjectIri` is `null`. Consumers fall back to body inspection if needed.
 
 ### Coordination
-Locks the v1.3.12 commitment from `_WIP/NOTIFIES.pgCK.v1.4.0.ckhexstore-decision-locked-roadmap.md`. pgCK web2's placeholder `rdfjs/engine.js` can pivot on `msg.subjectIri` and `msg.conceptType` directly; no need to re-grep subject grammar. Next: v1.3.13 ships `ck-rdf-bridge.js` (the `toQuads()` per-message bridge), v1.4 ships `ck-hex-store.js` (CKHexStore — the locked in-client store flavor).
+Locks the v1.3.12 commitment from the CKHexStore design coordination with pgCK. pgCK web2's placeholder `rdfjs/engine.js` can pivot on `msg.subjectIri` and `msg.conceptType` directly; no need to re-grep subject grammar. Next: v1.3.13 ships `ck-rdf-bridge.js` (the `toQuads()` per-message bridge), v1.4 ships `ck-hex-store.js` (CKHexStore — the locked in-client store flavor).
 
 ---
 
@@ -533,7 +533,7 @@ Locks the v1.3.12 commitment from `_WIP/NOTIFIES.pgCK.v1.4.0.ckhexstore-decision
 - Dictionary + binary paths activate transparently when pgCK starts publishing the relevant messages (pgCK v0.2 dependency).
 
 ### Coordination
-- v1.3.0 design surface fully locked via three-turn NOTIFY exchange with pgCK (see internal `_WIP/NOTIFIES.pgCK.v1.3.0.transport-binary-identity-alignment*` files).
+- v1.3.0 design surface fully locked via design coordination with pgCK (transport / binary / identity alignment).
 - Per pgCK §F: requires pgCK v0.2 for `ckp.dictionary` table + `ckp.ledger.id` → wire-seq plumbing. CKClient v1.3.0 ships with graceful JSON fallback when those server-side pieces aren't yet shipped.
 
 ---
