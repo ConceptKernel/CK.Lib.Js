@@ -4,6 +4,11 @@ All notable changes to CK.Lib.Js are documented here.
 
 ## [1.5.3] — 2026-07-01
 
+> **✅ RELEASED 2026-07-01 — attested-success.** CI run `28545233818` → `ghcr.io/conceptkernel/ck-lib-js:1.5.3`
+> (index `sha256:0ceeb30b…`); `gh attestation verify` exit 0; `LATEST.md` advanced to v1.5.3; GitHub Release
+> live (Latest). **Byte-verified:** image layer = exactly `ck.js` + `ck-client.js` + `ck-store.js` +
+> `vendor/{nats.ws,msgpack}.js` + README/LICENSE. **OCI-only** — npm steps skipped (deferred; `NPM_PUBLISH` off).
+
 Public-surface hygiene + npm publish-on-tag wiring (deferred). OCI-only release; byte-set unchanged.
 
 ### Changed
