@@ -2,6 +2,22 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.3] — 2026-07-01
+
+Public-surface hygiene + npm publish-on-tag wiring (deferred). OCI-only release; byte-set unchanged.
+
+### Changed
+- Removed non-public material and scrubbed internal working-coordination / unreleased-internal-spec references from the tracked tree — the shipped `ck.js` comment, the smoke tests, compose docs, PROVENANCE, the operations spec, and CHANGELOG history; example identifiers now use generic `demo` URNs.
+- README + COMPLIANCE: version currency; corrected npm publish status.
+- PROVENANCE: added the cross-repo public-disclosure policy.
+- Un-tracked the unreleased FUTURE/roadmap specs — the roadmap now lives in the GitHub project board + release milestones.
+- Git author identity corrected to `peter@conceptkernel.org`.
+
+### Added — npm publish-on-tag (deferred)
+- CI publishes to npm on tag with Sigstore/OIDC provenance + a `latest`-confirmation gate, **flag-gated** on repo var `NPM_PUBLISH` (default off). OCI-only until npm auth lands.
+
+Byte-set: `ck.js` + `ck-client.js` + `ck-store.js` + `vendor/{nats.ws,msgpack}.js` + README + LICENSE. Requires **pgCK ≥ 0.4.13**.
+
 ## [1.5.2] — 2026-06-19
 
 > **✅ RELEASED 2026-06-19 — attested-success.** CI run `27817676032` (publish in 52s) →
