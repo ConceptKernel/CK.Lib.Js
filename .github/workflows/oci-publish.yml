@@ -22,13 +22,13 @@ jobs:
       # Checkout the PUSHED TAG (default ref) — NEVER a fixed branch. Building `ref: main`
       # while releases are tagged on task branches shipped stale v1.4.0 bytes as :1.4.1/:1.4.2
       # (the 2026-06-11 packaging-integrity incident; see CHANGELOG [1.4.3]).
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v4
 
-      - uses: docker/login-action@v3
+      - uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -43,7 +43,7 @@ jobs:
 
       - name: Build and push multi-platform OCI bundle
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           platforms: linux/amd64,linux/arm64
@@ -63,7 +63,7 @@ jobs:
             org.opencontainers.image.designation=ckp:static
 
       - name: Attest SLSA Build Provenance v1
-        uses: actions/attest-build-provenance@v1
+        uses: actions/attest-build-provenance@v3
         with:
           subject-name: ghcr.io/conceptkernel/ck-lib-js
           subject-digest: ${{ steps.build.outputs.digest }}
@@ -86,9 +86,9 @@ jobs:
       # `--provenance` mints a Sigstore SLSA attestation linking the package to this tag + run.
       - name: Set up Node for npm publish
         if: ${{ vars.NPM_PUBLISH == 'true' }}   # npm DEFERRED — set repo var NPM_PUBLISH=true (after npm auth lands) to activate
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "24"
           registry-url: "https://registry.npmjs.org"
 
       - name: Publish to npm with provenance (idempotent)
