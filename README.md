@@ -89,21 +89,28 @@ import { CKStore }  from "@conceptkernel/cklib/internal/store";      // typed ca
 
 ## Install
 
-```bash
-npm install @conceptkernel/cklib        # npm publish of the 1.5.x client is imminent; today the live channel is the attested OCI bundle below
-```
+Today's live channel is the **attested OCI bundle** — pin the current tag from [`LATEST.md`](./LATEST.md):
 
 ```dockerfile
-FROM ghcr.io/conceptkernel/ck-lib-js:1.5.2 AS cklib_source           # attested, byte-verified
+FROM ghcr.io/conceptkernel/ck-lib-js:1.5.3 AS cklib_source           # attested + byte-verified; LATEST.md carries the current tag + digests
 COPY --from=cklib_source / /app/cklib/
+```
+
+```bash
+# DEFERRED: npm publish of the 1.5.x client is wired (Sigstore provenance) but not yet live.
+# Until then `npm install @conceptkernel/cklib` resolves the legacy 1.0.0 — use the OCI bundle above.
+npm install @conceptkernel/cklib
 ```
 
 ## Release state
 
-| Channel | Version | State |
-|---|---|---|
-| OCI `ghcr.io/conceptkernel/ck-lib-js` | **`:1.5.2`** | current release — the full surface above; attested + byte-verified (`ck.js` + `ck-client.js` + `ck-store.js` + `vendor/`). See [`LATEST.md`](./LATEST.md) for attested digests. |
-| npm `@conceptkernel/cklib` | `1.0.0` | **legacy (CKP v3.5 era) — do not use.** The modern dispatch-only client is the OCI bundle above; npm publish of the 1.5.x client (with provenance) is imminent. |
+[`LATEST.md`](./LATEST.md) is the CI-written source of truth for the current version and per-arch
+digests — this table states each channel's *stance*, not a version number (a duplicated number rots).
+
+| Channel | State |
+|---|---|
+| OCI `ghcr.io/conceptkernel/ck-lib-js` | **current release** — the full surface above; attested + byte-verified (`ck.js` + `ck-client.js` + `ck-store.js` + `vendor/` + README + LICENSE). Current tag + digests: [`LATEST.md`](./LATEST.md). |
+| npm `@conceptkernel/cklib` | `1.0.0` is **legacy (CKP v3.5 era) — do not use.** The modern dispatch-only client is the OCI bundle above; npm publish of the 1.5.x client (Sigstore provenance) is **wired but deferred** — gated on repo var `NPM_PUBLISH` until npm auth lands. |
 
 Treat OCI `:1.4.1`/`:1.4.2` as `:1.4.0` — see `CHANGELOG.md` `[1.4.3]`. Requires pgCK ≥ 0.4 for the
 governed `instance.*` surface; pre-CI-E gaps degrade honestly (empty results, never fabricated ones).
