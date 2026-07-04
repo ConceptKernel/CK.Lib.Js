@@ -2,6 +2,19 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [Unreleased]
+
+### Added
+- **`ck-notation.js` — Concept Kernel Notation (CKN) compiler** (proposed; #7). An additive,
+  separately-importable module at `@conceptkernel/cklib/notation` that turns an instance-plane
+  notation expression into a construct on a live kernel: `compile(source) → plan` (pure,
+  inspectable `[{verb, payload}]`) and `assemble(handle, planOrSource)` (runs the plan through a
+  `ConceptKernel` handle). Plan-emitter only — no RDF/quad store/query language; `ck.js`
+  unchanged; zero runtime deps; offline-tested (`tests/smoke-notation.mjs`). Instance plane
+  (χ/ρ→create · edges→link · τ→transition · π→verify/provenance) over shipped verbs; the genome
+  plane (σ/α/γ → propose ▸ vote ▸ apply) is deferred to a later slice. Ships as its **own**
+  release cut, not folded into the scoring byte-set.
+
 ## [1.5.3] — 2026-07-01
 
 > **✅ RELEASED 2026-07-01 — attested-success.** CI run `28545233818` → `ghcr.io/conceptkernel/ck-lib-js:1.5.3`
