@@ -21,7 +21,7 @@
   ],
   "scripts": {
     "check": "node --check ck.js && node --check ck-client.js && node --check ck-store.js",
-    "test": "npm run check && node tests/smoke-ck.mjs && node tests/smoke-ck-store.mjs && node tests/smoke-ck-client.mjs"
+    "test": "npm run check && node tests/smoke-ck.mjs && node tests/smoke-ck-store.mjs && node tests/smoke-ck-client.mjs && node tests/smoke-derived.mjs"
   },
   "repository": {
     "type": "git",

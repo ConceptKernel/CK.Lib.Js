@@ -45,6 +45,10 @@ const OP_VERB = {
 
 const isUnknownAffordance = (r) => r && r.ok === false && (r.error === 'unknown_affordance' || r.error === 'unknown_verb');
 
+/** The substrate's honest degrade on a derived read (pgCK#4 wire contract, ≥0.4.16): the value is
+ *  materializing over budget — `recompute_in_progress: true` is the answer, never a stale/guessed value. */
+export const isRecomputing = (r) => !!(r && r.ok === true && r.recompute_in_progress === true);
+
 // pgCK ≤0.4.x replies carry no uniform `.result`; each verb returns its own field. Map them so the
 // `.result`-keyed ingest + typed reads fire. (Reply-envelope normalization is pgCK design-Q1; per-verb
 // adapters until pgCK confirms the uniform reply envelope.)
@@ -123,6 +127,24 @@ export class ConceptKernel {
 
   /** The kernel's declared, identity-granted affordance descriptors (sourced from sealed rows). */
   affordances() { return this._affordances.slice(); }
+
+  /** `do` + honest-fresh polling for derived reads (pgCK#4 contract). While the reply is the honest
+   *  `recompute_in_progress` degrade, re-dispatches with backoff — safe: the substrate JOINS the
+   *  in-flight build (per-scope dedup), so polling never duplicates work. This helper decides WHEN
+   *  to ask again, never WHAT the value is: on budget exhaustion the last honest reply is returned
+   *  as-is (the caller surfaces `recomputing`; nothing is fabricated or served from cache). */
+  async doFresh(verb, payload = {}, opts = {}) {
+    const { attempts = 8, delayMs = 250, factor = 2, maxDelayMs = 4000, onRecomputing, ...dispatchOpts } = opts;
+    let reply = await this.do(verb, payload, dispatchOpts);
+    let wait = delayMs;
+    for (let i = 1; i < attempts && isRecomputing(reply); i++) {
+      if (onRecomputing) { try { onRecomputing(i, reply); } catch { /* observer must not break the poll */ } }
+      await new Promise((r) => setTimeout(r, wait));
+      wait = Math.min(wait * factor, maxDelayMs);
+      reply = await this.do(verb, payload, dispatchOpts);
+    }
+    return reply;
+  }
 
   // ── Named conveniences (sugar over `do`, mapped via OP_VERB) ────────────────
 

@@ -60,6 +60,7 @@ await tasks.provenance(t.id);    // the chain — who did what, in what order
 | Change the rules | `propose` `vote` `apply` | the schema and verb set evolve by **governance**, not migration |
 | Discover | `affordances()` | what *this identity* may do *here* — nothing else is callable |
 | React | `bind` `bindOnce` `view` `urn` · `ckOn`/`wireCkOn` | URN-pattern handlers and reactive views fed by the live event scope |
+| Derived reads | `doFresh` · `isRecomputing` | server-computed values, fresh-only. While the substrate materializes over budget it answers an honest `recompute_in_progress` — `doFresh` re-polls with backoff (a re-dispatch *joins* the in-flight build); the client never computes, caches-as-answer, or interpolates a value |
 
 All of it rides one closed door — every operation compiles to a governed dispatch
 (`k.do(verb, payload)` is the open form for any affordance the kernel declares).
