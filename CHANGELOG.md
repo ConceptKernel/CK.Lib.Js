@@ -4,6 +4,13 @@ All notable changes to CK.Lib.Js are documented here.
 
 ## [1.5.4] — 2026-07-06
 
+> **✅ RELEASED 2026-07-06 — attested-success.** CI run `28785133410` → `ghcr.io/conceptkernel/ck-lib-js:1.5.4`
+> (index `sha256:506dc60a…`); `gh attestation verify` exit 0; `LATEST.md` advanced to v1.5.4; GitHub Release live.
+> **Byte-verified:** image content = exactly `ck.js` + `ck-client.js` + `ck-store.js` + `vendor/{nats.ws,msgpack}.js`
+> + README + LICENSE. **OCI-only** — npm steps skipped (deferred; `NPM_PUBLISH` off). **Live-gate:** the real
+> 1.5.4 `ck.js` over NATS-WSS → pgCK 0.4.20 (`plane='derived'`) returned the derived value fresh and after a
+> watermark advance (never stale); base surface round-tripped.
+
 Scoring-loop client surface — honest recompute handling over the substrate's derived-read plane. OCI-only release; byte-set unchanged.
 
 ### Added — derived reads (`doFresh` / `isRecomputing`)
