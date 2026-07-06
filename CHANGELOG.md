@@ -2,6 +2,24 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.4] — 2026-07-06
+
+Scoring-loop client surface — honest recompute handling over the substrate's derived-read plane. OCI-only release; byte-set unchanged.
+
+### Added — derived reads (`doFresh` / `isRecomputing`)
+- **`k.doFresh(verb, payload, {attempts, delayMs, factor, maxDelayMs, onRecomputing})`** — dispatches a governed derived read and, while the substrate answers the honest `{ok, recompute_in_progress: true}` degrade, re-dispatches with exponential backoff. A re-dispatch **joins** the in-flight build (per-scope dedup — pgCK#4 contract), so polling is safe; it decides *when* to ask again, never *what* the value is. On budget exhaustion the last honest reply is returned verbatim — never a stale, cached, or interpolated value.
+- **`isRecomputing(reply)`** — recognizes the substrate's honest `recompute_in_progress` degrade.
+- **Verb-generic:** the client reads `ok` / `value` / `recompute_in_progress`; declared extras (`scored`, `freshness`, `net`/`volume`) pass through untouched. No consumer math, formula, or band ever enters the client.
+
+### Live-verified (verify-don't-assert)
+Real `ck.js` over real NATS-WSS → pgCK **0.4.20** (`plane='derived'`): the base surface (create → seal → verify → query) round-trips; `doFresh` returns the derived value; a watermark advance yields the **updated** value (fresh-only, never stale). The `recompute_in_progress` re-dispatch branch is covered by `smoke-derived` (13/13) + the two-sided contract confirmation.
+
+### Also
+- README currency — version + Docker-pull default corrected, npm status stated truthfully; the Release-state table now defers to `LATEST.md` rather than duplicating a number.
+- CI — publish-path actions bumped to Node-24 runtimes.
+
+Byte-set: `ck.js` + `ck-client.js` + `ck-store.js` + `vendor/{nats.ws,msgpack}.js` + README + LICENSE. Requires **pgCK ≥ 0.4.19** (derived-read plane).
+
 ## [1.5.3] — 2026-07-01
 
 > **✅ RELEASED 2026-07-01 — attested-success.** CI run `28545233818` → `ghcr.io/conceptkernel/ck-lib-js:1.5.3`
