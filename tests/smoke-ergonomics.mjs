@@ -29,6 +29,7 @@ function mockTransport() {
           if (!ALLOWED.includes(payload.to_state)) return { ok: false, error: 'invalid_transition', from: 'pending', to: payload.to_state, source: 'kernel', allowed: ALLOWED };
           return { ok: true, id: payload.id, from: 'pending', to: payload.to_state, source: 'kernel', verified: true };
         }
+        case 'instance.update': return { ok: true, id: payload.id, verified: true, proof_digest: 'pf:up' };
         case 'kernel.propose_change': return { ok: true, op: payload.op, proposal_iri: 'ckp://Proposal#p-42', verified: true }; // only proposal_iri set
         case 'kernel.vote': return { ok: true, about: payload.about, quorum_met: true };
         case 'kernel.apply': return { ok: true, about: payload.about, state: 'applied', epoch: 2 };
@@ -70,6 +71,18 @@ console.log('single-actor governance sugar — propose→vote→apply q1, no pir
   const applied = await k.setTransitionMap(TASK, { pending: ['sealed', 'discarded'] });
   ok('setTransitionMap runs the full dance → applied', applied.ok === true && applied.state === 'applied' && applied.epoch === 2);
   ok('applied carries the resolved proposal id', applied.proposal === 'ckp://Proposal#p-42');
+  await k.close();
+}
+
+console.log('callable Ref — create() returns a live handle bound to the new instance');
+{
+  const k = await activate();
+  const t = await k.create(TASK, { title: 'probe' });
+  ok('ref still carries the data fields (non-breaking)', t.ok === true && t.local === 'task-1');
+  const tr = await t.transition('sealed');        // routes to k.transition(t.id, 'sealed') — no id juggling
+  ok('ref.transition() works + stays lossless', tr.ok === true && tr.from === 'pending' && tr.to === 'sealed');
+  const up = await t.update({ title: 'renamed' }); // routes to k.update(t.id, …)
+  ok('ref.update() works', up.ok === true);
   await k.close();
 }
 

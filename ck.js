@@ -101,6 +101,20 @@ function writeResult(reply) {
   return { ok: true, id, urn, local, verified: reply.verified ?? !!reply.proof_digest, proof_digest: reply.proof_digest ?? null, seq: reply.seq };
 }
 
+/** Wrap a successful write-result as a live Ref bound to the handle — callable sugar so the caller
+ *  operates on the new instance without juggling its id. Non-breaking: the data fields (ok/id/urn/local/…)
+ *  stay; methods are added. Failures / receiptless replies pass through unchanged. */
+function makeRef(handle, w) {
+  if (!w || w.ok !== true || w.id == null) return w;
+  return Object.assign(w, {
+    transition: (toState, evidence) => handle.transition(w.id, toState, evidence),
+    update: (patch) => handle.update(w.id, patch),
+    link: (predicate, target) => handle.link(w.id, predicate, target),
+    verify: () => handle.verify(w.id),
+    get: () => handle.get(w.id),
+  });
+}
+
 /**
  * ConceptKernel — the live handle returned by `CK.activate`. Affordance-projected (what `do` may
  * invoke and what `activate` subscribed = the kernel's affordance rows ∩ the verified identity's
@@ -167,7 +181,7 @@ export class ConceptKernel {
     // Receipt-only reply → optimistically surface the sealed instance for cache-first reads; the
     // authoritative sealed event reconciles it (replace-by-id).
     if (w.ok && w.id) this._store.ingest({ '@id': w.id, '@type': type, ...body });
-    return w;
+    return makeRef(this, w);
   }
   /** TE-6: generic declared-shape patch (pgCK T4, ≥0.4.11) — instance.update {id, patch:{…}} → update_typed,
    *  patched by the type's declared properties (re-sealed; undeclared keys rejected). */
