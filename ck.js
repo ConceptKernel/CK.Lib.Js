@@ -90,10 +90,15 @@ function toFilterArray(filter) {
   return out;
 }
 
-/** Derive the stable write-result shape from a dispatch reply. */
+/** Derive the stable write-result shape from a dispatch reply. On success also carries a typed Ref:
+ *  `.urn` (full IRI form) + `.local` (bare local part) so callers never do URN surgery (`bare()`) or
+ *  guess between `.id`/`.iri`. `.id` is preserved unchanged (non-breaking). */
 function writeResult(reply) {
   if (!reply || reply.ok === false) return { ok: false, id: reply?.id ?? null, error: reply?.error, violations: reply?.violations, allowed: reply?.allowed };
-  return { ok: true, id: reply.id ?? reply.result?.['@id'] ?? null, verified: reply.verified ?? !!reply.proof_digest, proof_digest: reply.proof_digest ?? null, seq: reply.seq };
+  const id = reply.id ?? reply.result?.['@id'] ?? null;
+  const urn = reply.result?.['@id'] ?? reply.id ?? null;
+  const local = id != null ? String(urn ?? id).split(/[#/]/).pop() : null;
+  return { ok: true, id, urn, local, verified: reply.verified ?? !!reply.proof_digest, proof_digest: reply.proof_digest ?? null, seq: reply.seq };
 }
 
 /**
@@ -183,7 +188,11 @@ export class ConceptKernel {
    *  transition map; an illegal move returns {error:'invalid_transition', from, to, allowed} — `allowed` is
    *  surfaced so the caller can offer only the legal to_states. No client-side ride-on-update. */
   async transition(id, toState, evidence) {
-    return writeResult(await this.do(OP_VERB.transition, { id, to_state: toState, evidence }));
+    // Lossless: surface the sealed-map reply verbatim — {from, to, source} on success, plus `allowed`
+    // WHEN the server sends it (optional — live pgCK 0.4.21 omitted it for a nonexistent target). No
+    // dropping to raw do() just to read the from-state.
+    const r = await this.do(OP_VERB.transition, { id, to_state: toState, evidence });
+    return { ...writeResult(r), from: r?.from, to: r?.to, allowed: r?.allowed, source: r?.source };
   }
 
   /** TE-5: the full SHACL ValidationReport (pgCK T5, ≥0.4.12). Send {type:<declared IRI>,…fields} flat;
@@ -229,9 +238,30 @@ export class ConceptKernel {
   // ── Governance plane (gated on pgCK CI-D; honest stub until then — §4.6) ────
 
   // Governance plane — server shapes (pgCK 0.4.x): propose {op,requires_quorum,detail}; vote {about,value}; apply {about}.
-  async propose(op, detail = {}, requires_quorum = 1) { return this._gov(OP_VERB.propose, { op, requires_quorum, detail }); }
+  async propose(op, detail = {}, requires_quorum = 1) {
+    const r = await this._gov(OP_VERB.propose, { op, requires_quorum, detail });
+    // Normalize the proposal handle to a stable `.iri` (the reply names it proposal_iri/proposal/id/about)
+    // so callers — and govern() — read r.iri instead of a 5-way OR-guess.
+    if (r && typeof r === 'object' && r.iri == null) r.iri = r.proposal_iri ?? r.proposal ?? r.id ?? r.about ?? r.result?.['@id'] ?? null;
+    return r;
+  }
   async vote(proposalIri, value) { return this._gov(OP_VERB.vote, { about: proposalIri, value }); }
   async apply(proposalIri) { return this._gov(OP_VERB.apply, { about: proposalIri }); }
+
+  /** Single-actor governance: propose → vote(approve) → apply at the given quorum (default 1), returning a
+   *  stable { ok, proposal, state, epoch } — no manual proposal-id extraction. For a real multi-party quorum,
+   *  use propose()/vote()/apply() directly. */
+  async govern(op, detail = {}, opts = {}) {
+    const p = await this.propose(op, detail, opts.quorum ?? 1);
+    if (isUnknownAffordance(p)) return { ok: false, error: 'gov_plane_unavailable' };
+    if (!p?.iri) return { ok: false, error: 'no_proposal_iri', proposal: p };
+    const vote = await this.vote(p.iri, opts.value ?? 'approve');
+    const applied = await this.apply(p.iri);
+    return { ok: !!(applied && applied.ok), proposal: p.iri, state: applied?.state, epoch: applied?.epoch, vote, applied };
+  }
+  /** Sugar: seal a type's transition map in one governed act (single-actor by default). */
+  async setTransitionMap(targetClass, map, opts = {}) { return this.govern('set_transition_map', { targetClass, map }, opts); }
+
   async _gov(verb, payload) {
     const r = await this.do(verb, payload);
     if (isUnknownAffordance(r)) return { ok: false, error: 'gov_plane_unavailable' };
