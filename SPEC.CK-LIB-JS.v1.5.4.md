@@ -57,9 +57,8 @@ Three zero-dependency, vendored/air-gapped modules:
 Vendored: `./vendor/nats.ws.js` + `./vendor/msgpack.js`. No runtime CDN. Air-gapped since v1.4.2.
 
 **Identity (v3.9.1 δ / TR-02):** identity is **server-derived, never client-asserted.** The browser
-holds the OIDC JWT (**EdDSA / Ed25519** in the aligned deployment); the client presents it on the
-upgraded NATS-WSS connection (`login()` → token → reconnect) and sends only `{verb, kernel_urn,
-payload}` per message. pgCK appends identity as the 4th element of `ckp.dispatch(verb, urn, payload,
+holds the OIDC JWT; the client presents it on the upgraded NATS-WSS connection (`login()` → token →
+reconnect) and sends only `{verb, kernel_urn, payload}` per message. pgCK appends identity as the 4th element of `ckp.dispatch(verb, urn, payload,
 identity)`. Changing identity = re-login (new JWT) → reconnect → new granted verb set.
 
 ---

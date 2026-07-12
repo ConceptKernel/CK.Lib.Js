@@ -27,9 +27,9 @@ const k = await CK.activate('Tasks');        // attach — that is the whole set
 `activate` connects, authenticates, and subscribes the granted scope, returning a live handle. What
 the handle can do is `declared affordances ∩ your identity's grants` — nothing else is callable.
 
-**You never pass identity.** Identity is derived from the verified JWT on the connection (EdDSA/Ed25519
-in prod): the browser holds the token, the client presents it once at connect, and the server stamps
-`created_by` on every fact. To act as someone else you re-login and reconnect — there is no "set user"
+**You never pass identity.** Identity is derived from the verified JWT on the connection: the browser
+holds the token, the client presents it once at connect, and the server stamps `created_by` on every
+fact. To act as someone else you re-login and reconnect — there is no "set user"
 on the client.
 
 ```js
