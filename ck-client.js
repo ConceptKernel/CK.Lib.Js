@@ -419,6 +419,12 @@ class CKClient {
 
                     const traceId = hdrs['Trace-Id'] || (data && data.trace_id) || '';
 
+                    // v1.5.5 — server-attributed sender (pgCK F4): the `by` NATS header carries the
+                    // server-DERIVED, verified sender (`urn:ckp:participant:<id>`); `seq` = ledger Ck-Seq.
+                    // Read-only pass-through — the client never asserts, verifies, or derives identity.
+                    const by = hdrs['by'] ?? hdrs['By'] ?? null;
+                    const seq = seqRaw !== undefined ? seqRaw : null;
+
                     // v1.3.12 — typed envelope: derive kind/subjectIri/conceptType/kernel/verb.
                     // Additive fields; existing consumers reading only {subject,headers,data,traceId} unaffected.
                     const { kind, subjectIri, conceptType, kernel, verb } =
@@ -431,7 +437,7 @@ class CKClient {
                     }
 
                     this._emit(eventName, {
-                        subject: msg.subject, headers: hdrs, data, traceId,
+                        subject: msg.subject, headers: hdrs, data, traceId, by, seq,
                         kind, subjectIri, conceptType, kernel, verb,
                     });
                 } catch (e) { console.error('[CKClient] decode error:', e, 'subject:', msg.subject); }

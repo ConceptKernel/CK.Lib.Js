@@ -24,7 +24,7 @@ COPY README.md LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
 LABEL org.opencontainers.image.description="CKP v3.9 dispatch-only concept-kernel JS client (vendored, air-gapped) — static folder mount artifact"
-LABEL org.opencontainers.image.version="1.5.4"
+LABEL org.opencontainers.image.version="1.5.5"
 LABEL org.opencontainers.image.source="https://github.com/ConceptKernel/CK.Lib.Js"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.designation="ckp:static"

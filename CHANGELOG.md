@@ -2,6 +2,24 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.5] — 2026-07-16
+
+Client ergonomics (Layer 1a) + server-attributed sender (`msg.by`), aligned to the first **pg18** substrate. OCI-only release; byte-set unchanged.
+
+### Added — client ergonomics (Layer 1a)
+- **Typed callable `Ref`** — `create()` returns a Ref with `.urn`/`.local` (no `bare()` surgery) plus bound `.transition`/`.update`/`.link`/`.verify`/`.get` (no id juggling).
+- **Lossless `transition()`** — surfaces `{from, to, source}` (and `allowed` when the substrate sends it) verbatim; no dropping to raw `do()`.
+- **Single-actor governance** — `k.govern(op, detail)` / `k.setTransitionMap(type, map)` collapse propose→vote→apply at quorum 1; `propose()` normalizes a stable `.iri`.
+- Non-breaking (data fields preserved; methods additive). Live-verified over WSS vs pgCK 0.4.21.
+
+### Added — server-attributed sender (`msg.by`)
+- Every delivered event/result carries **`msg.by`** (the server-attributed sender, `urn:ckp:participant:<id>`) + **`msg.seq`** (ledger `Ck-Seq`), read from the NATS headers. **Read-only** — the client never asserts, verifies, or derives identity; the send path stays `{verb, kernel_urn, payload}` (there is no identity field to set). Enabled by pgCK 0.4.22 (server-derived identity). Live-verified over WSS vs pgCK **0.4.22-pg18** (two identities, correct `by`/`seq`) + 4 mock unit tests.
+
+### Alignment
+- First **pg18** cklib release: pgCK **0.4.22** · pgRDF **0.6.20** · first pg18/trixie `ck-allinone` bundle. cklib ships `FROM scratch` (no glibc), so the trixie base is transparent to the client.
+
+Byte-set: `ck.js` + `ck-client.js` + `ck-store.js` + `vendor/{nats.ws,msgpack}.js` + README + LICENSE. Requires **pgCK ≥ 0.4.22** for the `msg.by` sender surface (≥ 0.4.19 for derived reads). New docs: `SPEC.CK-LIB-JS.v1.5.5.md` + `GUIDE.v1.5.5.md`.
+
 ## [1.5.4] — 2026-07-06
 
 > **✅ RELEASED 2026-07-06 — attested-success.** CI run `28785133410` → `ghcr.io/conceptkernel/ck-lib-js:1.5.4`
