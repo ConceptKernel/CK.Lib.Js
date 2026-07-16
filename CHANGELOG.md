@@ -4,6 +4,12 @@ All notable changes to CK.Lib.Js are documented here.
 
 ## [1.5.5] — 2026-07-16
 
+> **✅ RELEASED 2026-07-16 — attested-success.** CI run `29503338516` → `ghcr.io/conceptkernel/ck-lib-js:1.5.5`
+> (index `sha256:385bc2c9…`); `gh attestation verify` exit 0; `LATEST.md` advanced to v1.5.5; GitHub Release live.
+> **Byte-verified:** image content = exactly `ck.js` + `ck-client.js` + `ck-store.js` + `vendor/{nats.ws,msgpack}.js`
+> + README + LICENSE. **OCI-only** — npm steps skipped (deferred; `NPM_PUBLISH` off). **Live-gate:** `msg.by` read
+> verified over WSS → pgCK 0.4.22-pg18 (two identities, correct `by`/`seq`); Layer 1a verified vs pgCK 0.4.21.
+
 Client ergonomics (Layer 1a) + server-attributed sender (`msg.by`), aligned to the first **pg18** substrate. OCI-only release; byte-set unchanged.
 
 ### Added — client ergonomics (Layer 1a)
