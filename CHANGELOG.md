@@ -4,6 +4,13 @@ All notable changes to CK.Lib.Js are documented here.
 
 ## [1.5.6] — 2026-07-28
 
+> **✅ RELEASED 2026-07-28 — attested-success.** CI run `30378825570` → `ghcr.io/conceptkernel/ck-lib-js:1.5.6`
+> (index `sha256:c405f90c…`); `gh attestation verify` exit 0; `LATEST.md` advanced to v1.5.6; GitHub Release live.
+> **Byte-verified:** image content = exactly `ck.js` + `ck-client.js` + `ck-store.js` + `vendor/{nats.ws,msgpack}.js`
+> + README + LICENSE. **OCI-only** — npm steps skipped (deferred; `NPM_PUBLISH` off). **Live-gate:** id-scoped
+> dispatch verified vs ck-allinone v0.7.32 — the client builds `input.kernel.pgCK.id.<sub>.action.<verb>`, it
+> routes + seals, and an unheld id is not attributed (broker-enforced; can't forge).
+
 Identity-scoped dispatch subject (#11) — a verified connection's governed dispatches seal the real `created_by`. OCI-only release; byte-set unchanged.
 
 ### Added — identity-scoped dispatch subject (#11)
