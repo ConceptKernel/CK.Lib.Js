@@ -2,6 +2,19 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.6] — 2026-07-28
+
+Identity-scoped dispatch subject (#11) — a verified connection's governed dispatches seal the real `created_by`. OCI-only release; byte-set unchanged.
+
+### Added — identity-scoped dispatch subject (#11)
+- When the connection is **verified**, governed dispatches publish on the broker-enforced id segment `input.kernel.pgCK.id.<sub>.action.<verb>`, where `<sub>` is the connection's **own** verified identity (surfaced from its token via the handle) — **not a client claim**. So the seal records the real `created_by` and delivered events carry the true `by:`. Anonymous connections and delegated `agent.*` verbs use the legacy subject (anonymous seal; back-compat).
+- **Never-assert preserved** — the payload stays `{verb, kernel_urn, payload}`; the id segment is addressing the broker already permits. Live-verified against `ck-allinone v0.7.32`: the client builds `input.kernel.pgCK.id.<sub>.action.<verb>`, it routes + seals, and publishing on an unheld id does **not** attribute (broker-enforced — the client cannot forge). Enabled by pgCK 0.4.24. + 4 mock unit tests.
+
+### Alignment
+- pgCK **0.4.24** (pg18) · pgRDF **0.6.20** · ck-allinone **v0.7.32**. Protocol pointer moves to **CKP v3.9.2** (omission-restoration of v3.9.1 — behaviour unchanged, teleology + harness-contact-point restored).
+
+Byte-set: `ck.js` + `ck-client.js` + `ck-store.js` + `vendor/{nats.ws,msgpack}.js` + README + LICENSE. Requires **pgCK ≥ 0.4.24** for verified id-scoped dispatch. New docs: `SPEC.CK-LIB-JS.v1.5.6.md` + `GUIDE.v1.5.6.md`.
+
 ## [1.5.5] — 2026-07-16
 
 > **✅ RELEASED 2026-07-16 — attested-success.** CI run `29503338516` → `ghcr.io/conceptkernel/ck-lib-js:1.5.5`

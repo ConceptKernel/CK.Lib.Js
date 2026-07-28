@@ -12,7 +12,7 @@
  *     // subscribed to result + event (both short-form alias AND v3.8 long-form), anonymous ready
  *
  *     ck.send({ action: 'ping' });               // → input.TechGames.Cymatics  (short-form publish)
- *     await ck.login('test26', 'test26');         // Keycloak JWT upgrade → RECONNECTS with JWT
+ *     await ck.login(username, password);         // Keycloak JWT upgrade → RECONNECTS with JWT
  *     ck.logout();                                // back to anonymous (reconnects)
  *
  *     ck.on('result',    msg => ...);  // { subject, headers, data, traceId }
@@ -274,7 +274,16 @@ class CKClient {
             // Governed verbs are answered on the GOV door; only delegated agent.* verbs ride the target
             // kernel's subject (the harness). The target kernel travels in the Ck-Kernel header (set above).
             const delegated = /^agent\./.test(verb) || verb === 'execute' || verb === 'presence' || verb === 'say';
-            subject = `input.kernel.${delegated ? target : this._gov}.action.${verb}`;   // v3.8 subject-grammar shim (removed at CI-B)
+            const routeKernel = delegated ? target : this._gov;
+            // v1.5.6 (#11): a VERIFIED connection publishes governed dispatches on the broker-enforced
+            // id-scoped segment so the seal records the real created_by / the event carries the true `by:`.
+            // NOT identity assertion — the broker permits ONLY the connection's own id (surfaced from its
+            // verified token via this.auth); a forged segment is denied and never seals. Anonymous
+            // connections and delegated agent.* verbs use the legacy subject (anonymous seal; back-compat).
+            const idSub = (!delegated && !this.auth.anonymous && (this.auth.claims?.sub ?? this.auth.userId)) || null;
+            subject = idSub
+                ? `input.kernel.${routeKernel}.id.${idSub}.action.${verb}`
+                : `input.kernel.${routeKernel}.action.${verb}`;   // v3.8 subject-grammar shim (removed at CI-B)
             body = { action: verb, ...payload };
         }
 

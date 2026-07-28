@@ -72,5 +72,27 @@ const noBy = await deliver([['Ck-Seq', ['8']], ['Content-Type', ['application/js
 ok('absent by → null (never fabricated)', noBy && noBy.by === null);
 ok('existing envelope fields still present (non-breaking)', !!(withBy && withBy.subject && withBy.data && 'traceId' in withBy));
 
+// ── id-scoped dispatch subject (v1.5.6 — #11, pgCK 0.4.24 broker-enforced admittance) ──────────
+console.log('ck-client.js — id-scoped dispatch subject (verified → own id segment)');
+{
+  // anonymous connection → legacy gov subject (seals anonymous; back-compat)
+  const a = mkClient('Demo.Board', 'pgCK');
+  await a.dispatch('instance.create', 'ckp://Kernel#Demo.Board', { type: 'urn:ckp:demo/type/Board' });
+  ok('anonymous → legacy gov subject', a.__lastSubject === 'input.kernel.pgCK.action.instance.create');
+
+  // verified connection → id-scoped subject built from ITS OWN sub (the broker enforces it)
+  const v = mkClient('Demo.Board', 'pgCK');
+  v.auth = { anonymous: false, userId: 'alice', claims: { sub: 'alice' }, token: 't' };
+  await v.dispatch('instance.create', 'ckp://Kernel#Demo.Board', { type: 'urn:ckp:demo/type/Board', sub: 'bob' });
+  ok('verified → id-scoped gov subject from own sub', v.__lastSubject === 'input.kernel.pgCK.id.alice.action.instance.create');
+  ok('payload identity ignored — never-assert (no "bob" in subject)', !v.__lastSubject.includes('bob'));
+
+  // delegated agent.* rides the target kernel — out of gov id-scope
+  const d = mkClient('Demo.Board', 'pgCK');
+  d.auth = { anonymous: false, userId: 'alice', claims: { sub: 'alice' }, token: 't' };
+  await d.dispatch('agent.execute', 'ckp://Kernel#Demo.Board', {});
+  ok('delegated agent.* → target kernel, not id-scoped', d.__lastSubject === 'input.kernel.Demo.Board.action.agent.execute');
+}
+
 console.log(`\n${fail === 0 ? '✅ PASS' : '❌ FAIL'} — ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);
