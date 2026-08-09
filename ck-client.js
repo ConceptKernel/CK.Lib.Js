@@ -399,9 +399,29 @@ class CKClient {
         for (const subject of this._extraSubjects) this._sub(subject, 'broadcast');
     }
 
+    /** Fault-ISOLATED per subject. A broker that refuses ONE subject must not cost us the others.
+     *  Before this, two failure points were unguarded and both are reachable with an anonymous grant
+     *  that does not cover every declared subject:
+     *    1. `nc.subscribe()` throwing SYNCHRONOUSLY aborted the whole subscribe sequence — and because
+     *       the deprecated short form `result.<K>` is subscribed BEFORE the canonical
+     *       `result.kernel.<K>.>`, a refusal on the alias meant the canonical subject was never
+     *       subscribed at all and NO result ever arrived. That is a total outage caused by a subject
+     *       we only carry for v1.2 back-compat.
+     *    2. The `for await` rejecting escaped into an un-awaited async IIFE — an unhandled rejection,
+     *       invisible to this client's own `error` channel.
+     *  Now: each subject stands or falls alone, and a refusal is REPORTED rather than fatal or silent.
+     *  A permissions refusal on a deprecated alias is degradation; on a canonical subject it is a real
+     *  defect — either way the consumer is told, and the client keeps whatever it was granted. */
     _sub(topic, eventName) {
         const jc = nats.JSONCodec();
-        const sub = this.nc.subscribe(topic);
+        let sub;
+        try {
+            sub = this.nc.subscribe(topic);
+        } catch (e) {
+            this._emit('error', { kind: 'error', scope: 'subscribe', subject: topic, error: String(e?.message || e),
+                                  note: 'subject refused at subscribe; other subjects unaffected' });
+            return;
+        }
         this._subs.push(sub);
         (async () => {
             for await (const msg of sub) {
@@ -451,7 +471,14 @@ class CKClient {
                     });
                 } catch (e) { console.error('[CKClient] decode error:', e, 'subject:', msg.subject); }
             }
-        })();
+        })().catch((e) => {
+            // Failure point 2: the iterator itself rejected — a broker refusal delivered asynchronously
+            // is the common case. Previously this was an unhandled rejection: the subject went dead
+            // silently and nothing on the `error` channel said so. Report it and leave the rest alone.
+            this._emit('error', { kind: 'error', scope: 'subscription', subject: topic,
+                                  error: String(e?.message || e),
+                                  note: 'subscription ended early; other subjects unaffected' });
+        });
     }
 
     /**
