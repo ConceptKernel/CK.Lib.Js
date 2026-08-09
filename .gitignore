@@ -5,8 +5,17 @@ ref-*
 # other repos, alignment docs). Public repo: keep working state out of history.
 _WIP/
 
-# SPEC.* are consumer documentation — tracked in the public repo.
-# Distributed artifacts (npm/OCI) never carry a spec, but the specs themselves are public.
+# CKP.* / SPEC.* — wave statements and internal specs. NEVER the public repo.
+# Supersedes the earlier "SPEC.* are public consumer documentation" policy (CKP v3.11 §11).
+# NOTE: five SPEC.CK-*.md files were committed under the OLD policy and remain in history
+# and on the public remote — an ignore rule does not retract them. Removal is a separate,
+# deliberate decision (they may be linked by consumers). See second-pass §P1.
+CK*.md
+SPEC*.md
+GUIDE*.md
+# pgRDF's exception form (CKP v3.11 §16.5): keep a path for future component
+# engineering specs that are legitimately public consumer documentation.
+!specs/SPEC.CK-LIB-JS.*.md
 
 # Agent entry-point + local dev/MCP cruft — local working context, never the public repo.
 CLAUDE.md

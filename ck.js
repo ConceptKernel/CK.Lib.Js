@@ -98,7 +98,30 @@ function writeResult(reply) {
   const id = reply.id ?? reply.result?.['@id'] ?? null;
   const urn = reply.result?.['@id'] ?? reply.id ?? null;
   const local = id != null ? String(urn ?? id).split(/[#/]/).pop() : null;
-  return { ok: true, id, urn, local, verified: reply.verified ?? !!reply.proof_digest, proof_digest: reply.proof_digest ?? null, seq: reply.seq };
+  // U7 (#16): `verified` means VALIDATED, never HASHED. A proof digest attests that bytes were hashed
+  // and chained; it says NOTHING about whether a shape gated the body. Absent `verified` is UNKNOWN —
+  // `null`, never `true`. This client renders server verdicts verbatim and must not manufacture a
+  // conformance claim out of an integrity artifact. OBSERVABLE CHANGE: a reply carrying a
+  // proof_digest and no `verified` used to report true and now reports null (falsy either way for
+  // `if (w.verified)`, but no longer an affirmative claim).
+  //
+  // #15: `createdBy` / `sealedAtEpoch` are PASS-THROUGH — surfaced verbatim, never interpreted, null
+  // when absent. createdBy is the substrate-derived participant (CKP v3.11 RULE-5): a caller comparing
+  // what it sent against what comes back learns its own identity claim had no effect, with no
+  // differential refusal for an attacker to use as an oracle. sealedAtEpoch lets the L1 cache detect
+  // that it holds pre-change data instead of serving it as current.
+  //
+  // SHIM, with a removal condition: the snake_case reads exist only because the reply envelope is not
+  // yet a declared contract (pgCK owes it). Drop the snake_case alternatives the moment the envelope
+  // is declared — same discipline as the v3.8 subject-grammar shim, not an open-ended fallback.
+  return {
+    ok: true, id, urn, local,
+    verified: reply.verified ?? null,
+    proof_digest: reply.proof_digest ?? null,
+    createdBy: reply.createdBy ?? reply.created_by ?? null,
+    sealedAtEpoch: reply.sealedAtEpoch ?? reply.sealed_at_epoch ?? null,
+    seq: reply.seq,
+  };
 }
 
 /** Wrap a successful write-result as a live Ref bound to the handle — callable sugar so the caller
