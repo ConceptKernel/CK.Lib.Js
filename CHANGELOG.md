@@ -4,6 +4,11 @@ All notable changes to CK.Lib.Js are documented here.
 
 ## [1.5.7] — 2026-08-09
 
+> **✅ RELEASED 2026-08-09 — attested-success.** CI run `31331795341` → `ghcr.io/conceptkernel/ck-lib-js:1.5.7`
+> (subject `sha256:dabecd7da9f4f97f…`); `gh attestation verify` exit 0, signed by the v1.5.7 `oci-publish` workflow
+> and negative-controlled (wrong owner and absent tag both exit 1, so the pass is not vacuous); `LATEST.md`
+> advanced to v1.5.7; GitHub Release live. **Byte-set unchanged** from 1.5.6 — behaviour-only release.
+
 Reply-envelope truth and per-subject fault isolation. The client stops making claims the substrate did not make, starts surfacing signal it did, and no longer lets one refused subject take down the rest. Byte-set unchanged.
 
 ### Fixed — `verified` means validated, never hashed (#16)
