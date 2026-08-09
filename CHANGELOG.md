@@ -2,6 +2,28 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.7] — 2026-08-09
+
+Reply-envelope truth and per-subject fault isolation. The client stops making claims the substrate did not make, starts surfacing signal it did, and no longer lets one refused subject take down the rest. Byte-set unchanged.
+
+### Fixed — `verified` means validated, never hashed (#16)
+- `writeResult` derived `verified` as `reply.verified ?? !!reply.proof_digest`, manufacturing a **conformance** claim out of an **integrity** artifact. A proof digest attests that bytes were hashed and chained; it says nothing about whether a shape gated the body. Absent `verified` is now **UNKNOWN (`null`), never `true`**.
+- **Observable change:** a reply carrying a `proof_digest` and no `verified` used to report `true` and now reports `null`. Falsy either way for `if (w.verified)`, but no longer an affirmative claim. Consumers asserting `verified === true` on such replies will see the difference — that is the point.
+
+### Added — the substrate-derived identity is surfaced (#15)
+- `createdBy` and `sealedAtEpoch` pass through **verbatim, never interpreted, `null` when absent**. `createdBy` is the substrate-derived participant (CKP v3.11 RULE-5): a caller comparing what it sent against what comes back learns its own identity claim had no effect, with **no differential refusal** for an attacker to use as an oracle. `sealedAtEpoch` lets the L1 cache detect it holds pre-change data instead of serving it as current.
+- The snake_case reads are a **shim with a removal condition** — they exist only because the reply envelope is not yet a declared contract (pgCK owes it). Drop them the moment it is declared; same discipline as the v3.8 subject-grammar shim, not an open-ended fallback.
+
+### Fixed — a refused subject no longer kills every subscription (#17)
+- Two unguarded failure points, both reachable with an anonymous grant that does not cover every declared subject. `nc.subscribe()` throwing **synchronously** aborted the whole subscribe sequence — and because the deprecated short form `result.<K>` is subscribed **before** the canonical `result.kernel.<K>.>`, a refusal on the alias meant the canonical subject was never subscribed and **no result ever arrived**: a total outage caused by a subject carried only for v1.2 back-compat. Separately, the `for await` rejecting escaped into an un-awaited async IIFE — an unhandled rejection, invisible to the client's own `error` channel.
+- Each subject now **stands or falls alone**, and a refusal is **reported** on the `error` channel rather than fatal or silent. A refusal on a deprecated alias is degradation; on a canonical subject it is a real defect — either way the consumer is told, and the client keeps whatever it was granted.
+
+### Changed — documentation policy (CKP v3.11 §11)
+- `CK*.md` / `SPEC*.md` / `GUIDE*.md` are ignored and the matching files untracked; pgRDF's negated-path exception form is kept for legitimately public component specs. **Deliberately not done:** five `SPEC.CK-*.md` files committed under the old policy remain in history and on the public remote — an ignore rule does not retract them, consumers may link them, and removal is a separate decision (second-pass P1).
+
+### Alignment
+- pgCK **0.4.24** (pg18) · ck-allinone **v0.7.32** · CKP **v3.11**. Byte-set: `ck.js` + `ck-client.js` + `ck-store.js` + `vendor/{nats.ws,msgpack}.js` + README + LICENSE. No new in-repo docs — specs are no longer tracked here per the policy change above.
+
 ## [1.5.6] — 2026-07-28
 
 > **✅ RELEASED 2026-07-28 — attested-success.** CI run `30378825570` → `ghcr.io/conceptkernel/ck-lib-js:1.5.6`
