@@ -356,13 +356,28 @@ export const CK = {
       dispatch: (verb, payload) => transport.dispatch(verb, kernelUrn, payload),
     });
 
-    // Discover the kernel's affordances (sealed rows ∩ identity grants — degrades to full surface
-    // honestly until pgCK can answer "what may this identity do here?").
+    // #19 — activate's OWN discovery calls (affordances, snapshot) are best-effort and already degrade
+    // to []/skip. But a refused publish on an anonymous connection surfaces as a bare
+    // 'PERMISSIONS_VIOLATION' with NO subject (measured — the client cannot correlate it to the
+    // pending dispatch), so each call would otherwise wait out the full dispatchTimeout. An anonymous
+    // connection would take 2×dispatchTimeout to hand back a handle it degrades to subscribe-only
+    // anyway. `discoveryTimeout` (default 5s) bounds the degrade: a granted substrate answers in ms so
+    // it never bites the healthy path; a refused one degrades in seconds, not minutes. The transport's
+    // _onProtocolError still surfaces the violation on the `error` channel immediately, so the refusal
+    // is diagnosed, not silent — it is only the WAIT that this bound removes.
+    const discoveryTimeout = opts.discoveryTimeout ?? 5000;
+    const withDeadline = (p, fallback) => {
+      let t; const timer = new Promise((res) => { t = setTimeout(() => res(fallback), discoveryTimeout); });
+      // Swallow the loser's eventual rejection/resolution so a late dispatch timeout is never an
+      // unhandled rejection once activate has already moved on.
+      Promise.resolve(p).catch(() => {}).finally(() => clearTimeout(t));
+      return Promise.race([Promise.resolve(p).catch(() => fallback), timer]);
+    };
+
+    // Discover the kernel's affordances (sealed rows ∩ identity grants — degrades to [] honestly).
     let affordances = [];
-    try {
-      if (typeof transport.affordances === 'function') affordances = await transport.affordances(kernelUrn);
-      else { const r = await transport.dispatch('affordances', kernelUrn, {}); affordances = (r && r.result) || []; }
-    } catch { affordances = []; }
+    if (typeof transport.affordances === 'function') affordances = await withDeadline(transport.affordances(kernelUrn), []);
+    else affordances = await withDeadline(transport.dispatch('affordances', kernelUrn, {}).then(r => (r && r.result) || []), []);
 
     const handle = new ConceptKernel(kernelUrn, transport, store, affordances, opts);
 
@@ -374,7 +389,8 @@ export const CK = {
 
     // Hydrate current state when instance.snapshot is reachable + granted (closes F-E client-side).
     if (opts.hydrate !== false) {
-      try { const snap = await handle.snapshot(); if (Array.isArray(snap) && snap.length) store.ingest(snap); } catch { /* not granted yet */ }
+      const snap = await withDeadline(handle.snapshot(), []);
+      if (Array.isArray(snap) && snap.length) store.ingest(snap);
     }
 
     return handle;

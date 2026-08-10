@@ -2,6 +2,35 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.9] — 2026-08-10
+
+`activate` degrades on a refused grant in seconds instead of hanging, and a broker refusal is surfaced
+immediately instead of silently. Completes the fault-model work #17 began; confirmed on the anonymous
+tier — the case that previously hung ~95s and returned nothing.
+
+- **Fix — a broker permission violation is never silent (#19).** `_onProtocolError` surfaces every
+  `PERMISSIONS_VIOLATION` on the `error` channel the moment it arrives, for **any** dispatch. A consumer
+  that listens sees the refusal at once.
+- **Fix — `activate` degrades bounded, not on the full timeout (#19).** Its own best-effort discovery
+  calls (`affordances`, `snapshot`) are bounded to `discoveryTimeout` (default 5s). An
+  anonymous/restricted connection returns a subscribe-only handle in **~10s** (2×5s, measured), where it
+  previously hung ~95s. A granted substrate answers in ms, so the healthy path is untouched. Tunable via
+  `opts.discoveryTimeout`.
+
+**Scope, stated explicitly:**
+- **In scope:** the *never-silent emit* covers **all** dispatches; the *bounded wait* covers
+  **`activate`'s own discovery calls**.
+- **Out of scope → tracked as #20:** an arbitrary user dispatch (e.g. `instance.query`) on a refused
+  subject still waits the full `dispatchTimeout` before its promise rejects with "timed out". The
+  refusal *is* emitted immediately on the `error` channel, but the promise is not rejected early —
+  the client-side violation carries **no subject** (measured), so it cannot be correlated to the
+  specific pending dispatch. From a consumer's seat this is "connected, then a full `dispatchTimeout` of
+  silence per refused read" — real, one layer below `activate`. The clean fix needs a subject on the
+  wire / the reply envelope; it is deliberately its own ticket, not folded in here.
+
+Byte-set (file list) unchanged. `ck.js` and `ck-client.js` contents change; behaviour-affecting.
+Requires **pgCK ≥ 0.4.24**.
+
 ## [1.5.8] — 2026-08-10
 
 Completes the 1.5.7 fault-isolation and reply-envelope work, and repairs a regression 1.5.7 shipped.

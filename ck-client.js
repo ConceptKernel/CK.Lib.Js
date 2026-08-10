@@ -293,7 +293,9 @@ class CKClient {
                 this._pending.delete(traceId);
                 reject(new Error(`dispatch('${verb}') timed out after ${timeout}ms`));
             }, timeout);
-            this._pending.set(traceId, { resolve, reject, timer });
+            // v1.5.9 (#19): store subject+verb so a broker permission violation on this subject can
+            // reject THIS dispatch immediately — the refusal is known at once, not after the timeout.
+            this._pending.set(traceId, { resolve, reject, timer, subject, verb });
             try {
                 this.nc.publish(subject, jc.encode({ timestamp: new Date().toISOString(), ...body }), { headers: h });
             } catch (e) {
@@ -658,8 +660,38 @@ class CKClient {
                 if (s.type === 'reconnecting') this._setConnection('connecting');
                 else if (s.type === 'reconnect') this._setConnection('connected');
                 else if (s.type === 'disconnect') this._setConnection('disconnected');
+                else if (String(s.type).toLowerCase().includes('error') || s?.data?.permissionContext) this._onProtocolError(s);
             }
         })();
+    }
+
+    /** #19 — a broker permission violation must (1) never be silent, and (2) fail the dispatch it
+     *  concerns AT ONCE, not after dispatchTimeout. Before this, a Publish Violation arrived here
+     *  while the pending dispatch sat keyed by traceId with no correlation, so activate's discovery
+     *  calls (affordances, snapshot) each waited out the full timeout before their existing try/catch
+     *  could degrade — minutes of silence over a refusal known immediately. That is
+     *  `sym-reports-not-refuses` in our own client. Once a publish is refused the reply can never
+     *  come, so rejecting now is strictly correct, never premature. */
+    _onProtocolError(s) {
+        const d = s?.data;
+        const pc = (d && d.permissionContext) || null;
+        let op = pc?.operation, subject = pc?.subject;
+        const msg = (d && d.message) || (typeof d === 'string' ? d : '') || String(d ?? s?.type ?? 'protocol error');
+        if (!subject) {
+            const m = /to\s+"?([^"\s]+)"?/i.exec(msg);
+            if (m) { subject = m[1]; op = /sub/i.test(msg) ? 'sub' : 'pub'; }
+        }
+        // (1) Always surface — a refusal is never silent.
+        this._emit('error', { kind: 'error', scope: 'protocol', op: op || null, subject: subject || null, error: msg });
+        // (2) Fail-fast any dispatch whose publish subject the broker just refused.
+        if (subject) {
+            for (const [tid, p] of this._pending) {
+                if (p.subject === subject) {
+                    clearTimeout(p.timer); this._pending.delete(tid);
+                    p.reject(new Error(`dispatch('${p.verb}') refused by broker: ${msg}`));
+                }
+            }
+        }
     }
 
     _emitStatus(error = null) {
