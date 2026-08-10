@@ -105,11 +105,15 @@ function writeResult(reply) {
   // proof_digest and no `verified` used to report true and now reports null (falsy either way for
   // `if (w.verified)`, but no longer an affirmative claim).
   //
-  // #15: `createdBy` / `sealedAtEpoch` are PASS-THROUGH — surfaced verbatim, never interpreted, null
-  // when absent. createdBy is the substrate-derived participant (CKP v3.11 RULE-5): a caller comparing
-  // what it sent against what comes back learns its own identity claim had no effect, with no
-  // differential refusal for an attacker to use as an oracle. sealedAtEpoch lets the L1 cache detect
-  // that it holds pre-change data instead of serving it as current.
+  // #15, extended to ALL FOUR STAMPS: `createdBy` / `sealedAtEpoch` / `producedBy` /
+  // `conformsToShape` are PASS-THROUGH — surfaced verbatim, never interpreted, null when absent.
+  // The substrate derives all four at seal (an A3-adopted project targets InstanceShape, so they are
+  // REQUIRED there, not merely stored). createdBy: a caller comparing what it sent against what came
+  // back learns its own identity claim had no effect, with no differential refusal to use as an
+  // oracle. sealedAtEpoch: lets the L1 cache detect it holds pre-change data. producedBy: which
+  // kernel processed the instance into being. conformsToShape: WHICH shape gated the body — its
+  // absence on a reply is itself information (a vacuous / pre-adoption seal, per the epoch-0 fence),
+  // which is why null is surfaced rather than papered over.
   //
   // SHIM, with a removal condition: the snake_case reads exist only because the reply envelope is not
   // yet a declared contract (pgCK owes it). Drop the snake_case alternatives the moment the envelope
@@ -120,6 +124,8 @@ function writeResult(reply) {
     proof_digest: reply.proof_digest ?? null,
     createdBy: reply.createdBy ?? reply.created_by ?? null,
     sealedAtEpoch: reply.sealedAtEpoch ?? reply.sealed_at_epoch ?? null,
+    producedBy: reply.producedBy ?? reply.produced_by ?? null,
+    conformsToShape: reply.conformsToShape ?? reply.conforms_to_shape ?? null,
     seq: reply.seq,
   };
 }

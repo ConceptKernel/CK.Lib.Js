@@ -414,17 +414,8 @@ class CKClient {
      *  defect — either way the consumer is told, and the client keeps whatever it was granted. */
     _sub(topic, eventName) {
         const jc = nats.JSONCodec();
-        let sub;
-        try {
-            sub = this.nc.subscribe(topic);
-        } catch (e) {
-            this._emit('error', { kind: 'error', scope: 'subscribe', subject: topic, error: String(e?.message || e),
-                                  note: 'subject refused at subscribe; other subjects unaffected' });
-            return;
-        }
-        this._subs.push(sub);
-        (async () => {
-            for await (const msg of sub) {
+        this._guardedSubscribe(topic, 'subscription', (msg) => {
+            {
                 try {
                     // Read headers (NATS header values are arrays of strings)
                     const hdrs = {};
@@ -433,7 +424,8 @@ class CKClient {
                     // Per-subject dedup via Ck-Seq header (graceful: no header → no dedup)
                     const seqRaw = hdrs['Ck-Seq'] || hdrs['ck-seq'];
                     if (seqRaw !== undefined) {
-                        if (this._isSeen(msg.subject, seqRaw)) continue;
+                        // callback body now, not a loop body: return skips THIS message.
+                        if (this._isSeen(msg.subject, seqRaw)) return;
                         this._markSeen(msg.subject, seqRaw);
                     }
 
@@ -471,13 +463,6 @@ class CKClient {
                     });
                 } catch (e) { console.error('[CKClient] decode error:', e, 'subject:', msg.subject); }
             }
-        })().catch((e) => {
-            // Failure point 2: the iterator itself rejected — a broker refusal delivered asynchronously
-            // is the common case. Previously this was an unhandled rejection: the subject went dead
-            // silently and nothing on the `error` channel said so. Report it and leave the rest alone.
-            this._emit('error', { kind: 'error', scope: 'subscription', subject: topic,
-                                  error: String(e?.message || e),
-                                  note: 'subscription ended early; other subjects unaffected' });
         });
     }
 
@@ -537,13 +522,36 @@ class CKClient {
         return { kind, subjectIri, conceptType, kernel, verb };
     }
 
+    /** The ONE place a subscription is created. `_sub` and `_subDict` both route through it so the
+     *  #17 fault isolation cannot drift apart again — which is exactly how it broke: #17 hardened
+     *  every user-facing subject in `_sub` and MISSED `_subDict`, which carried its own copy of the
+     *  raw subscribe + bare async IIFE. That one internal subject is `event.kernel.Dictionary.>`,
+     *  which an anonymous grant does not cover, so the single un-guarded path was also the first
+     *  one every anonymous client hits — an unhandled rejection on connect, taking the whole client
+     *  down, which is precisely what #17 exists to prevent. Two copies of a guard is one guard.
+     *  Returns null when the subject is refused; callers must tolerate that. */
+    _guardedSubscribe(subject, scope, onMsg) {
+        let sub;
+        try {
+            sub = this.nc.subscribe(subject);
+        } catch (e) {
+            this._emit('error', { kind: 'error', scope: 'subscribe', subject, error: String(e?.message || e),
+                                  note: 'subject refused at subscribe; other subjects unaffected' });
+            return null;
+        }
+        this._subs.push(sub);
+        (async () => { for await (const msg of sub) onMsg(msg); })().catch((e) => {
+            this._emit('error', { kind: 'error', scope, subject, error: String(e?.message || e),
+                                  note: 'subscription ended early; other subjects unaffected' });
+        });
+        return sub;
+    }
+
     _subDict() {
         const subject = 'event.kernel.Dictionary.>';
         const jc = nats.JSONCodec();
-        const sub = this.nc.subscribe(subject);
-        this._subs.push(sub);
-        (async () => {
-            for await (const msg of sub) {
+        this._guardedSubscribe(subject, 'dictionary', (msg) => {
+            {
                 try {
                     const data = jc.decode(msg.data);
                     if (msg.subject.endsWith('.v_bumped')) {
@@ -569,7 +577,7 @@ class CKClient {
                     // Intentionally do NOT emit on 'event' — dictionary is internal infrastructure.
                 } catch (e) { console.error('[CKClient] dict decode error:', e); }
             }
-        })();
+        });
     }
 
     _isSeen(subject, seq) {

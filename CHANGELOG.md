@@ -2,6 +2,29 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.8] — 2026-08-10
+
+Completes the 1.5.7 fault-isolation and reply-envelope work, and repairs a regression 1.5.7 shipped.
+
+- **Fix — anonymous clients no longer crash on connect (completes #17).** 1.5.7 hardened `_sub` but
+  `_subDict` kept its own raw `nc.subscribe()` + bare async IIFE, bypassing both guards — on
+  `event.kernel.Dictionary.>`, the one internal subject an anonymous grant excludes. So every anonymous
+  client (the only tier that connects today) died on connect as an unhandled rejection. `_sub` and
+  `_subDict` now route through a single `_guardedSubscribe`; a refused subject is reported on the
+  `error` channel and the rest survive. Measured: an admitted-but-restricted anonymous connection stays
+  alive, four refusals reported not fatal. Two copies of a guard is one guard.
+- **Reply stamps extended two → four (#15).** `writeResult` now surfaces `producedBy` and
+  `conformsToShape` alongside `createdBy` and `sealedAtEpoch` — all pass-through, uninterpreted, `null`
+  when absent. `conformsToShape` names which shape gated the body; its absence is itself signal (a
+  vacuous / pre-adoption seal), never hidden. Against an A3-adopted kernel these are substrate-derived
+  and required by `InstanceShape`.
+- **Fix — Dockerfile image label.** 1.5.7 shipped `org.opencontainers.image.version="1.5.6"`; corrected
+  to track the release.
+
+Byte-set (file list) unchanged: `ck.js` + `ck-client.js` + `ck-store.js` + `vendor/{nats.ws,msgpack}.js`
++ README + LICENSE. `ck.js` and `ck-client.js` contents change; behaviour-affecting. Requires
+**pgCK ≥ 0.4.24**.
+
 ## [1.5.7] — 2026-08-09
 
 > **✅ RELEASED 2026-08-09 — attested-success.** CI run `31331795341` → `ghcr.io/conceptkernel/ck-lib-js:1.5.7`
