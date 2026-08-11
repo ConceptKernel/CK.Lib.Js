@@ -59,6 +59,7 @@ class CKClient {
         this.config = {
             wssEndpoint: config.wssEndpoint || (_loc ? `wss://${_loc.host}/wss` : null),
             authenticator: config.authenticator || null,
+            tokenProvider: config.tokenProvider || null,   // #14 Mode A — app-owned token, forwarded
             authEndpoint: config.authEndpoint || (_loc ? `${_loc.protocol}//${_loc.host}` : null),
             realm: config.realm || null,
             clientId: config.clientId || 'ck-browser',
@@ -346,6 +347,30 @@ class CKClient {
     // ── Internal ─────────────────────────────────────────────────────────
 
     async _openConnection() {
+        // #14 Mode A — tokenProvider. The app owns the token; cklib forwards it into the CONNECT frame
+        // and re-invokes the provider on EVERY (re)connect (refresh is free — _reconnectWithCurrentAuth
+        // routes through here). cklib never mints, never manages a refresh lifecycle (refreshToken stays
+        // null — that is login()'s job, which this retires), and never VALIDATES the token. It parses
+        // the payload only to surface `sub` for the id-scoped subject — reading a claim to form
+        // addressing the broker already permits (CL-C1), not asserting identity. Precedence: an explicit
+        // `authenticator` wins; else `tokenProvider`; else whatever login()/anonymous already set.
+        if (this.config.tokenProvider && !this.config.authenticator) {
+            try {
+                const jwt = await this.config.tokenProvider();
+                if (jwt) {
+                    const claims = this._parseJwt(jwt);
+                    this.auth = { anonymous: false, userId: claims?.preferred_username || claims?.sub || null,
+                                  token: jwt, refreshToken: null, claims };
+                } else {
+                    this.auth = { anonymous: true, userId: null, token: null, refreshToken: null };
+                }
+            } catch (e) {
+                // Provider failed → stay anonymous and surface it; never throw (honest degrade, and the
+                // substrate refuses a bad/absent token at admission anyway).
+                this._emit('error', { kind: 'error', scope: 'tokenProvider', error: String(e?.message || e) });
+                this.auth = { anonymous: true, userId: null, token: null, refreshToken: null };
+            }
+        }
         const connectOpts = {
             servers: this.config.wssEndpoint,
             maxReconnectAttempts: this.config.maxReconnectAttempts,

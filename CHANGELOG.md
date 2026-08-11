@@ -2,6 +2,34 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.10] — 2026-08-11
+
+Takes cklib out of the token path — `tokenProvider` (#14 Mode A). The last self-contained client
+identity item.
+
+- **`tokenProvider` — the app owns the token, cklib forwards it (#14 Mode A).**
+  `CK.activate(k, { tokenProvider: async () => jwt })` — cklib re-invokes the provider on every
+  (re)connect, forwards the token into the NATS `CONNECT` frame, parses `sub` **only** to form the
+  id-scoped subject, and holds **no** refresh lifecycle (`refreshToken` stays null). It never mints,
+  stores long-term, or validates. `login()` (password grant, holds tokens) is retired from the
+  recommended path. Mode B (inject-`nc`) stays architecturally blocked (no claims → anon).
+- **Client-half measured** (`new CKClient({tokenProvider})`): provider invoked, token forwarded
+  verbatim, `auth.claims.sub` populated, id-scoped subject forms, `refreshToken` null.
+
+**Grounding (measured / reported):** pgRDF **0.6.27** (measured, `pgrdf_status`) · pgck-mcp **0.2.3** ·
+og#29 verified-tier delivery (JWKS-at-init) landed · pgCK **0.4.39** (reported). **Requirement floor
+unchanged: pgCK ≥ 0.4.24.**
+
+**End-to-end status, stated honestly:** `tokenProvider`'s *client half* is verified. The *end-to-end*
+confirmation — a `tokenProvider` connection sealing `created_by` = the token's identity — is gated on
+the bench granting the `CK.Lib.Js` kernel segment (`pgck.kernels` + per-identity grant); measured
+2026-08-11, that dispatch is still refused. Shipping the client capability now, as `authenticator`
+shipped in 1.5.6 ahead of the verified tier; the e2e gate is a substrate/registration step, not a cklib
+change.
+
+Byte-set (file list) unchanged: `ck.js` + `ck-client.js` + `ck-store.js` + `vendor/{nats.ws,msgpack}.js`
++ README + LICENSE. `ck-client.js` changes; behaviour-additive (a new opt). Requires **pgCK ≥ 0.4.24**.
+
 ## [1.5.9] — 2026-08-10
 
 `activate` degrades on a refused grant in seconds instead of hanging, and a broker refusal is surfaced
