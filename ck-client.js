@@ -7,7 +7,7 @@
  * Usage:
  *   <script type="module" src="/cklib/ck-client.js"></script>
  *   <script type="module">
- *     const ck = new CKClient({ kernel: 'TechGames.Cymatics' });
+ *     const ck = new CKClient({ kernel: 'TechGames' });   // no '.' — see the constructor guard below
  *     await ck.connect();
  *     // subscribed to result + event (both short-form alias AND v3.8 long-form), anonymous ready
  *
@@ -47,9 +47,44 @@ const nats = { connect, JSONCodec, headers };
 
 const DEDUP_MAX_PER_SUBJECT = 1000;
 
+/**
+ * A kernel name's WIRE form — the token NATS actually routes on. Leave alone where facts
+ * remember: a name with no '.'/'*'/'>'/whitespace already has a working literal subject (pgCK,
+ * Dictionary, demo, ...) — the broker's grant and every sealed provenance record reference that
+ * exact casing, so it passes through untouched. Lowercase where nothing remembers: a dotted name
+ * (CK.Lib.Js, pgCK.MCP) has NO working literal form — pgCK's configured_kernels() drops any
+ * '.'-bearing token unconditionally, so nothing has ever routed successfully under the raw name —
+ * and adopts the same lowercase-dash form the credential plane already computes for its BOT
+ * identity (pgCK.MCP/pgck-mcp:78's regex), rather than inventing a second convention.
+ * Measured against pgCK's grant logic and pgck-mcp's BOT slug, 2026-08-11/12.
+ */
+function slugKernel(name) {
+    if (!name) return name;
+    if (!/[.*>\s]/.test(name)) return name;   // already routable — the exact form facts remember
+    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
 class CKClient {
     constructor(config = {}) {
         this.kernel = config.kernel || null;
+
+        // The wire form (see slugKernel above) — used for every NATS subject built below and in
+        // dispatch(). `this.kernel` itself stays raw/dotted: it's what callers named, what shows
+        // up in URNs and error messages, and what a caller compares against (e.g. G5a's
+        // gov !== kernel check) — only the string actually handed to nc.publish/subscribe changes.
+        this._wireKernel = this.kernel ? slugKernel(this.kernel) : null;
+
+        // Fail fast only on the truly unroutable case — nothing left after normalization (a name
+        // that was pure separators/wildcards, e.g. '...' or '***') — instead of building an empty
+        // subject token and finding out on the first dispatch. A dotted name is no longer refused
+        // here: it is translated (this._wireKernel), not rejected.
+        if (this.kernel && !this._wireKernel) {
+            throw new Error(
+                `CKClient: kernel name '${this.kernel}' has no routable form — nothing but ` +
+                `separators/wildcards remain after normalization. Choose a kernel segment with ` +
+                `at least one letter or digit.`
+            );
+        }
 
         // Endpoints derive from the page origin (same-origin /wss behind Envoy) when a browser
         // location exists; otherwise they MUST be passed explicitly (guarded at connect/login). No
@@ -77,27 +112,28 @@ class CKClient {
         // Per-kernel topic derivation. v1.3 carries BOTH forms:
         //   short = input.<K> (v1.2 alias, deprecated, removed in v2.0)
         //   long  = input.kernel.<K>.action.<verb> (v3.8 canonical)
-        this.topics = this.kernel ? {
-            input:           `input.${this.kernel}`,                                  // short publish
-            inputLongPrefix: `input.kernel.${this.kernel}.action.`,                   // long publish (append verb)
-            result:          `result.${this.kernel}`,                                 // short subscribe
-            resultLong:      `result.kernel.${this.kernel}.>`,                        // long subscribe wildcard (grammar-agnostic: catches result.kernel.<K>.<verb> AND .action.<verb>; Trace-Id correlates — mirrors eventLong breadth)
-            event:           `event.${this.kernel}`,                                  // short subscribe
-            eventLong:       `event.kernel.${this.kernel}.>`,                         // long subscribe wildcard
-            error:           `event.kernel.${this.kernel}.error`,                     // per-kernel error (v1.3)
+        const wk = this._wireKernel;
+        this.topics = wk ? {
+            input:           `input.${wk}`,                                  // short publish
+            inputLongPrefix: `input.kernel.${wk}.action.`,                   // long publish (append verb)
+            result:          `result.${wk}`,                                 // short subscribe
+            resultLong:      `result.kernel.${wk}.>`,                        // long subscribe wildcard (grammar-agnostic: catches result.kernel.<K>.<verb> AND .action.<verb>; Trace-Id correlates — mirrors eventLong breadth)
+            event:           `event.${wk}`,                                  // short subscribe
+            eventLong:       `event.kernel.${wk}.>`,                         // long subscribe wildcard
+            error:           `event.kernel.${wk}.error`,                     // per-kernel error (v1.3)
         } : null;
 
         // Allow advanced callers to override completely
         if (config.topicDefs) this.topicDefs = config.topicDefs;
-        else this.topicDefs = this.kernel ? [
-            { name: `input.${this.kernel}`,                       dir: 'pub', access: 'anon' },
-            { name: `input.kernel.${this.kernel}.action.>`,       dir: 'pub', access: 'anon' },
-            { name: `result.${this.kernel}`,                      dir: 'sub', access: 'anon' },
-            { name: `result.kernel.${this.kernel}.>`,             dir: 'sub', access: 'anon' },
-            { name: `event.${this.kernel}`,                       dir: 'sub', access: 'anon' },
-            { name: `event.kernel.${this.kernel}.>`,              dir: 'sub', access: 'anon' },
-            { name: `admin.${this.kernel}`,                       dir: 'pub', access: 'auth' },
-            { name: `metrics.${this.kernel}`,                     dir: 'sub', access: 'auth' },
+        else this.topicDefs = wk ? [
+            { name: `input.${wk}`,                       dir: 'pub', access: 'anon' },
+            { name: `input.kernel.${wk}.action.>`,       dir: 'pub', access: 'anon' },
+            { name: `result.${wk}`,                      dir: 'sub', access: 'anon' },
+            { name: `result.kernel.${wk}.>`,             dir: 'sub', access: 'anon' },
+            { name: `event.${wk}`,                       dir: 'sub', access: 'anon' },
+            { name: `event.kernel.${wk}.>`,              dir: 'sub', access: 'anon' },
+            { name: `admin.${wk}`,                       dir: 'pub', access: 'auth' },
+            { name: `metrics.${wk}`,                     dir: 'sub', access: 'auth' },
         ] : [];
 
         // v1.3 dictionary state (per-project IRI handle table). Maintained internally.
@@ -275,7 +311,7 @@ class CKClient {
             // Governed verbs are answered on the GOV door; only delegated agent.* verbs ride the target
             // kernel's subject (the harness). The target kernel travels in the Ck-Kernel header (set above).
             const delegated = /^agent\./.test(verb) || verb === 'execute' || verb === 'presence' || verb === 'say';
-            const routeKernel = delegated ? target : this._gov;
+            const routeKernel = slugKernel(delegated ? target : this._gov);
             // v1.5.6 (#11): a VERIFIED connection publishes governed dispatches on the broker-enforced
             // id-scoped segment so the seal records the real created_by / the event carries the true `by:`.
             // NOT identity assertion — the broker permits ONLY the connection's own id (surfaced from its
@@ -409,7 +445,7 @@ class CKClient {
             this._sub(this.topics.resultLong, 'result');
             // Governed-verb replies arrive on the gov door's result subject — subscribe it when the
             // activated kernel isn't the gov kernel, so instance.*/kernel.* dispatches correlate (G5a).
-            if (this._gov && this._gov !== this.kernel) this._sub(`result.kernel.${this._gov}.>`, 'result');
+            if (this._gov && this._gov !== this.kernel) this._sub(`result.kernel.${slugKernel(this._gov)}.>`, 'result');
         }
         // event channel (short + long forms)
         if (this._subscribeChannels.includes('event')) {
@@ -720,7 +756,18 @@ class CKClient {
     }
 
     _emitStatus(error = null) {
-        this._emit('status', { connection: this.connection, auth: { ...this.auth }, error });
+        // REDACTED BY DESIGN (pgCK finding-1786649692677093000): this event once spread the ENTIRE
+        // auth object — the raw bearer AND the refresh token — to every in-process listener, and a
+        // consumer app faithfully rendered a person's live credentials into its visible log. A
+        // status event answers "am I connected, as whom, until when" — it never carries a
+        // replayable credential. No spread here, ever: a spread leaks every FUTURE auth field by
+        // default; the allowlist is the contract.
+        const a = this.auth || {};
+        this._emit('status', {
+            connection: this.connection,
+            auth: { anonymous: !!a.anonymous, userId: a.userId ?? null, exp: a.claims?.exp ?? null, hasToken: !!a.token },
+            error,
+        });
     }
 
     _emit(event, data) {

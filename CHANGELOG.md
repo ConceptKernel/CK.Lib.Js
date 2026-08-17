@@ -2,6 +2,40 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.11] — 2026-08-17
+
+A security fix and a routing fix. The first is the reason to upgrade promptly.
+
+- **SECURITY — status events carry no credential.** Through v1.5.10 `_emitStatus` spread the entire
+  auth object (`auth: { ...this.auth }`) to every in-process `status` listener — the **raw bearer**,
+  and on the `login()` path the **refresh token** — and a consumer app faithfully rendered a person's
+  live credentials into its visible log. Now an allowlist: `{anonymous, userId, exp, hasToken}`, no
+  spread. A status event answers *am I connected, as whom, until when* — never *with what*. **No
+  spread here, ever:** a spread leaks every **future** auth field by default, so the allowlist is the
+  contract rather than a filter.
+  - **`tokenProvider` (#14 Mode A) did not retire this.** It removed the refresh token from the
+    spread and **left the bearer in it**, so the recommended path was affected too.
+  - **Blast radius widened ~72×** when fleet bearers moved 10 h → 30 d: a leaked bearer is now
+    replayable for a month rather than dead by the next session.
+  - Filed by pgCK as `finding-1786649692677093000`; **confirmed against the shipped artifact**
+    (`git show v1.5.10:ck-client.js`) and independently re-confirmed by pgCK. Ruled and sealed here
+    as `finding-1786968168282526000`.
+  - **Covered:** a smoke fixture plants `SECRET-BEARER` + `SECRET-REFRESH` in `this.auth` and asserts
+    neither appears anywhere in the emitted event, while `userId` / `exp` / `hasToken` survive.
+- **The kernel segment is slugged for the wire only** (`CK.Lib.Js` → `ck-lib-js`). A dotted name can
+  never be granted, so every publish under it was dropped unanswered. Names that already route pass
+  through **byte-identical** (`pgCK`, `Dictionary`, `demo`); an all-separator name throws.
+  Facts keep their original casing — only the subject is slugged. `SPEC.CK-LIB-JS.v1.5.11` §3.2.
+  - Live census this release: `ck_do naming.dotted {}` → 2 rows, **`CK.Lib.Js`** and **`pgCK.MCP`**.
+    The trap is current, not historical.
+
+**Verification:** `tests/smoke-ck-client.mjs` — **29 passed, 0 failed**.
+
+**Grounding (measured / reported):** pgck-mcp **0.2.97**, cklib **1.5.10**, surface `epoch 4 · 42
+nodeshapes · f89d919a…`, modules `wave/v3.11 + lexicon/v3.11` (all measured here via `ck_doctor`) ·
+pgCK **0.4.76** (reported). No substrate floor change is required by this release: both fixes are
+client-side and neither adds a wire surface.
+
 ## [1.5.10] — 2026-08-11
 
 Takes cklib out of the token path — `tokenProvider` (#14 Mode A). The last self-contained client

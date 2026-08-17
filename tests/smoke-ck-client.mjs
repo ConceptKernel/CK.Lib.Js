@@ -28,16 +28,16 @@ function mkClient(kernel, gov) {
 console.log('ck-client.js — gov-routing regression (G5a)');
 
 // A NON-GOV kernel handle (the case that timed out before the fix)
-const k = mkClient('Demo.Board', 'pgCK');
-const r = await k.dispatch('instance.create', 'ckp://Kernel#Demo.Board', { type: 'urn:ckp:demo/type/Board' });
+const k = mkClient('demo-board', 'pgCK');
+const r = await k.dispatch('instance.create', 'ckp://Kernel#demo-board', { type: 'urn:ckp:demo/type/Board' });
 ok('governed create → gov door, not the target kernel', k.__lastSubject === 'input.kernel.pgCK.action.instance.create');
 ok('governed create resolves (no timeout) → ok+verified', r.ok === true && r.verified === true);
 
-await k.dispatch('instance.query', 'ckp://Kernel#Demo.Board', {});
+await k.dispatch('instance.query', 'ckp://Kernel#demo-board', {});
 ok('governed query → gov door', k.__lastSubject === 'input.kernel.pgCK.action.instance.query');
 
-await k.dispatch('agent.execute', 'ckp://Kernel#Demo.Board', {});
-ok('delegated agent.execute → TARGET kernel (the harness), not gov door', k.__lastSubject === 'input.kernel.Demo.Board.action.agent.execute');
+await k.dispatch('agent.execute', 'ckp://Kernel#demo-board', {});
+ok('delegated agent.execute → TARGET kernel (the harness), not gov door', k.__lastSubject === 'input.kernel.demo-board.action.agent.execute');
 
 k._subscribeAll();
 ok('non-gov handle subscribes the gov reply (result.kernel.pgCK.>)', k.__subs.includes('result.kernel.pgCK.>'));
@@ -46,6 +46,66 @@ ok('non-gov handle subscribes the gov reply (result.kernel.pgCK.>)', k.__subs.in
 const g = mkClient('pgCK', 'pgCK');
 await g.dispatch('instances.count', 'ckp://Kernel#pgCK', {});
 ok('gov-kernel handle: governed verb on its own door', g.__lastSubject === 'input.kernel.pgCK.action.instances.count');
+
+// ── wire-kernel slug (2026-08-12 — pgCK configured_kernels() drops any '.'-bearing kernel name;
+// CK.Lib.Js and pgCK.MCP measured NOT READY against it). "Lowercase where nothing remembers;
+// leave alone where facts remember" — a dotted name has no working literal form so it adopts the
+// lowercase-dash form the credential plane already computes for BOT (pgCK.MCP/pgck-mcp:78's
+// regex); an already-routable name is untouched, since the live grant and sealed provenance
+// reference its exact casing. ──────────────────────────────────────────────────────────────────
+console.log('ck-client.js — wire-kernel slug (dotted names route; working names untouched)');
+
+// A dotted own-kernel name constructs (no throw) and every subject uses the slugged form.
+const dotted = mkClient('CK.Lib.Js', 'pgCK');
+ok('dotted kernel constructs', dotted.kernel === 'CK.Lib.Js');
+ok('_wireKernel is the slug', dotted._wireKernel === 'ck-lib-js');
+ok('topics.input uses the slug', dotted.topics.input === 'input.ck-lib-js');
+ok('topics.eventLong uses the slug', dotted.topics.eventLong === 'event.kernel.ck-lib-js.>');
+
+await dotted.dispatch('agent.execute', 'ckp://Kernel#CK.Lib.Js', {});
+ok('delegated dispatch on own dotted kernel → slugged subject',
+   dotted.__lastSubject === 'input.kernel.ck-lib-js.action.agent.execute');
+
+// A dotted TARGET (named via kernelUrn, not the client's own kernel) is also slugged.
+const toOther = mkClient('demo-board', 'pgCK');
+await toOther.dispatch('agent.execute', 'ckp://Kernel#pgCK.MCP', {});
+ok('delegated dispatch targeting a dotted kernelUrn → slugged subject',
+   toOther.__lastSubject === 'input.kernel.pgck-mcp.action.agent.execute');
+
+// Regression guard: names that already route MUST NOT be touched — the live pgck.kernels grant
+// and every sealed provenance record reference this exact casing; lowercasing it would silently
+// break the currently-working default path.
+for (const name of ['pgCK', 'Dictionary', 'demo']) {
+  const c = mkClient(name, name);
+  ok(`'${name}' passes through unchanged (facts remember this casing)`, c._wireKernel === name && c.topics.input === `input.${name}`);
+}
+
+// Degenerate case: nothing left after normalization still fails fast, by design.
+try {
+  mkClient('...', 'pgCK');
+  ok('all-separator kernel name throws', false);
+} catch (e) {
+  ok('all-separator kernel name throws', /no routable form/.test(e.message));
+}
+
+// ── status redaction (2026-08-16 — pgCK finding-1786649692677093000: the status event spread the
+// whole auth object, handing the raw bearer AND refresh token to every listener; a consumer app
+// rendered a person's live credentials into its log). The failing case, as a permanent fixture:
+// a verified client's status event must carry identity/expiry signals and NEVER a credential. ──
+console.log('ck-client.js — status events carry no credential (redaction fixture)');
+{
+  const c = new CKClient({ kernel: 'demo-board', subscribe: [] });
+  c.auth = { anonymous: false, userId: 'alice', token: 'SECRET-BEARER', refreshToken: 'SECRET-REFRESH', claims: { sub: 'alice', exp: 1786649308 } };
+  let got = null;
+  c.on('status', (s) => { got = s; });
+  c._emitStatus();
+  const flat = JSON.stringify(got);
+  ok('status event emitted', !!got);
+  ok('no raw token anywhere in the event', !flat.includes('SECRET-BEARER'));
+  ok('no refresh token anywhere in the event', !flat.includes('SECRET-REFRESH'));
+  ok('identity signals survive (userId, exp, hasToken)', got.auth.userId === 'alice' && got.auth.exp === 1786649308 && got.auth.hasToken === true);
+  ok('anonymous flag faithful', got.auth.anonymous === false);
+}
 
 // ── msg.by / msg.seq surface (v1.5.5 — pgCK F4 server-attributed sender) ──────
 console.log('ck-client.js — msg.by / msg.seq (server-attributed sender, read-only)');
@@ -76,22 +136,22 @@ ok('existing envelope fields still present (non-breaking)', !!(withBy && withBy.
 console.log('ck-client.js — id-scoped dispatch subject (verified → own id segment)');
 {
   // anonymous connection → legacy gov subject (seals anonymous; back-compat)
-  const a = mkClient('Demo.Board', 'pgCK');
-  await a.dispatch('instance.create', 'ckp://Kernel#Demo.Board', { type: 'urn:ckp:demo/type/Board' });
+  const a = mkClient('demo-board', 'pgCK');
+  await a.dispatch('instance.create', 'ckp://Kernel#demo-board', { type: 'urn:ckp:demo/type/Board' });
   ok('anonymous → legacy gov subject', a.__lastSubject === 'input.kernel.pgCK.action.instance.create');
 
   // verified connection → id-scoped subject built from ITS OWN sub (the broker enforces it)
-  const v = mkClient('Demo.Board', 'pgCK');
+  const v = mkClient('demo-board', 'pgCK');
   v.auth = { anonymous: false, userId: 'alice', claims: { sub: 'alice' }, token: 't' };
-  await v.dispatch('instance.create', 'ckp://Kernel#Demo.Board', { type: 'urn:ckp:demo/type/Board', sub: 'bob' });
+  await v.dispatch('instance.create', 'ckp://Kernel#demo-board', { type: 'urn:ckp:demo/type/Board', sub: 'bob' });
   ok('verified → id-scoped gov subject from own sub', v.__lastSubject === 'input.kernel.pgCK.id.alice.action.instance.create');
   ok('payload identity ignored — never-assert (no "bob" in subject)', !v.__lastSubject.includes('bob'));
 
   // delegated agent.* rides the target kernel — out of gov id-scope
-  const d = mkClient('Demo.Board', 'pgCK');
+  const d = mkClient('demo-board', 'pgCK');
   d.auth = { anonymous: false, userId: 'alice', claims: { sub: 'alice' }, token: 't' };
-  await d.dispatch('agent.execute', 'ckp://Kernel#Demo.Board', {});
-  ok('delegated agent.* → target kernel, not id-scoped', d.__lastSubject === 'input.kernel.Demo.Board.action.agent.execute');
+  await d.dispatch('agent.execute', 'ckp://Kernel#demo-board', {});
+  ok('delegated agent.* → target kernel, not id-scoped', d.__lastSubject === 'input.kernel.demo-board.action.agent.execute');
 }
 
 console.log(`\n${fail === 0 ? '✅ PASS' : '❌ FAIL'} — ${pass} passed, ${fail} failed`);

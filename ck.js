@@ -218,6 +218,18 @@ export class ConceptKernel {
   // TE-8 (live-verified vs pgCK 0.4.13): `target` is a PLAIN IRI — edge.create puts it straight into the
   // materialized turtle, so an {'@id':…} wrapper turtle-parse-errors. `predicate` must be a declared IRI.
   async link(source, predicate, target) { return writeResult(await this.do(OP_VERB.link, { source, predicate, target })); }
+  // NAMED FOR WHAT IT IS: a sealed EDGE that also emits an event — `instance.link` with `event:true`.
+  // It is NOT a notification channel, and the older reading of it as one is wrong in two ways.
+  // (1) It is addressed: source→target. v3.11's notification concept is `wave:Finding` — "something
+  //     measured that is not work", UNOWNED by default (measured: FindingShape requires label,
+  //     core:reason and findingState; it has NO owner property). A recipient is not addressed; they
+  //     read it, and it becomes work only if THEY seal `promotedTo` a Ticket.
+  // (2) `from` here is the edge's SOURCE INSTANCE, never a sender claim. The sender is `ckp:createdBy`,
+  //     derived from the verified connection — measured 2026-08-12, and a payload asserting a different
+  //     identity is ignored, not merged. Do not read `from` as "who sent this".
+  // To notify, CREATE a Finding — `k.create(<wave:Finding IRI>, {label, reason, findingState})`. There is
+  // deliberately no `finding()` helper: it would have to hardcode a core IRI, and this client hardcodes
+  // none (CL-D2). The caller supplies the IRI, as with every other type.
   async notify(from, predicate, to, body = {}) { return writeResult(await this.do(OP_VERB.link, { source: from, predicate, target: to, body, event: true })); }
   async retire(id, reason) { return writeResult(await this.do(OP_VERB.retire, { id, reason })); }
   async verify(id) { const r = await this.do(OP_VERB.verify, { id }); return { verified: r?.verified ?? !!r?.proof_digest, proof_digest: r?.proof_digest ?? null, seq: r?.seq }; }
