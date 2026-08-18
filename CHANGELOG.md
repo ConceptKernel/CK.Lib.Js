@@ -29,10 +29,15 @@ door-served cklib confirmed at v1.5.11 bytes before this release (`ck.js` `b99b0
 `ck-client.js` carries the redaction and **zero** `{...this.auth}` spreads) · pgCK **0.4.76**
 (reported). No substrate change required: this release adds no wire surface and no verb.
 
-> **Known delivery gap, unchanged by this release.** The npm package `@conceptkernel/cklib` is
-> published at **1.0.0** and `dist-tags.latest` points there; npm steps stay gated on repo var
-> `NPM_PUBLISH`, which is unset. **npm consumers do not have the v1.5.11 credential fix.** The OCI
-> bundle and the door are current; npm is not.
+> **npm is not a delivery channel for cklib** (operator ruling, 2026-08-18). Publishing is disabled
+> deliberately, not pending: the workflow gate is off *and* `package.json` carries `"private": true`,
+> so a stray repo var cannot publish by itself. **Ship via the OCI bundle (`ghcr.io/conceptkernel/
+> ck-lib-js`) or the door's `/cklib/`** — both are current and byte-verified at every release.
+>
+> **One hazard worth naming, since it outlives the ruling:** `@conceptkernel/cklib@1.0.0` *is* on the
+> public registry and `dist-tags.latest` still resolves to it, so `npm i @conceptkernel/cklib` returns
+> a 2026-era build that is **not a supported artifact** and has none of the security work. Deprecating
+> or unpublishing it needs registry credentials this repo does not hold — flagged, not actioned.
 
 ## [1.5.11] — 2026-08-17
 

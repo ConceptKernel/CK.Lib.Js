@@ -85,7 +85,10 @@ jobs:
       # Reuses the job's id-token:write (the same OIDC identity that signs the OCI attestation).
       # `--provenance` mints a Sigstore SLSA attestation linking the package to this tag + run.
       - name: Set up Node for npm publish
-        if: ${{ vars.NPM_PUBLISH == 'true' }}   # npm DEFERRED — set repo var NPM_PUBLISH=true (after npm auth lands) to activate
+        if: ${{ vars.NPM_PUBLISH == 'true' }}   # npm DISABLED (operator ruling 2026-08-18): npm is NOT a delivery
+        #   channel for cklib. Belt and braces — this gate is off (repo var unset) AND package.json carries
+        #   "private": true, so `npm publish` refuses even if the var is ever set by accident. To re-enable,
+        #   BOTH must change deliberately. Ship via the OCI bundle and the door's /cklib/ instead.
         uses: actions/setup-node@v5
         with:
           node-version: "24"
@@ -157,7 +160,7 @@ jobs:
           cat > LATEST.md <<EOF
           # CK.Lib.Js — latest published artifacts
 
-          One publishable surface ships from this repo today: the **OCI static bundle** (\`ckp:static\`) per [SPEC.OCI.BUNDLE.v0.4](https://github.com/sporaxis-com/oci-germination/blob/main/SPEC.OCI.BUNDLE.v0.4.md), attestation-gated (this file renders only after \`gh attestation verify\` passes). The npm package \`@conceptkernel/cklib\` is staged in \`package.json\` (publish **deferred** until npm auth lands; the workflow's npm steps are gated on repo var \`NPM_PUBLISH\`). See [Repo packages view](https://github.com/${REPO}/pkgs/container/ck-lib-js) for the full version history.
+          One publishable surface ships from this repo today: the **OCI static bundle** (\`ckp:static\`) per [SPEC.OCI.BUNDLE.v0.4](https://github.com/sporaxis-com/oci-germination/blob/main/SPEC.OCI.BUNDLE.v0.4.md), attestation-gated (this file renders only after \`gh attestation verify\` passes). **npm is not a delivery channel** for this library (operator ruling 2026-08-18): publishing is disabled deliberately — the workflow gate is off and \`package.json\` carries \`"private": true\`. Note \`@conceptkernel/cklib@1.0.0\` remains on the public registry from an early publish and is **not a supported artifact**. See [Repo packages view](https://github.com/${REPO}/pkgs/container/ck-lib-js) for the full version history.
 
           ## CK.Lib.Js OCI bundle — \`${TAG}\`
 
