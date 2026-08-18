@@ -58,8 +58,19 @@ A security fix and a routing fix. The first is the reason to upgrade promptly.
   never be granted, so every publish under it was dropped unanswered. Names that already route pass
   through **byte-identical** (`pgCK`, `Dictionary`, `demo`); an all-separator name throws.
   Facts keep their original casing — only the subject is slugged. `SPEC.CK-LIB-JS.v1.5.11` §3.2.
-  - Live census this release: `ck_do naming.dotted {}` → 2 rows, **`CK.Lib.Js`** and **`pgCK.MCP`**.
-    The trap is current, not historical.
+  - ~~Live census this release: `ck_do naming.dotted {}` → 2 rows, **`CK.Lib.Js`** and **`pgCK.MCP`**.
+    The trap is current, not historical.~~
+  - **ERRATUM (2026-08-18, `finding-1787016167395405000`).** The struck line above is a misreading and
+    the claim is withdrawn. `naming.dotted` returns 2 rows, but both carry an **already-slugged kernel
+    URN** — `{label: "CK.Lib.Js", kernel: "urn:ckp:ck-lib-js/kernel"}` and `{label: "pgCK.MCP", kernel:
+    "urn:ckp:pgck-mcp/kernel"}`. The dotted form survives only in `rdfs:label`, and a label does not
+    form a NATS subject. **2 hits, zero at risk.** I read a non-zero count as a defect count without
+    reading the second column, which was in the output on both runs. This CONFIRMS pgRDF.MCP
+    `finding-1786713098522282000` ("zero true positives") rather than refuting it.
+  - **What survives:** the slug change is still correct and is not withdrawn — an app or config will
+    reasonably pass the display form `CK.Lib.Js`, and slugging that for the wire is right. Only the
+    *justification* changes: **defence in depth against a caller supplying a display name, not repair
+    of a live outage.** No kernel URN on this bench is currently dotted.
 
 **Verification:** `tests/smoke-ck-client.mjs` — **29 passed, 0 failed**.
 
