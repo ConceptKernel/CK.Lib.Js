@@ -2,7 +2,9 @@
 // handle dispatches governed verbs: governed verbs MUST route to the gov door
 // (input.kernel.<gov>.action.<verb>) and the gov reply MUST be subscribed; only delegated agent.*
 // ride the target kernel. Run: node tests/smoke-ck-client.mjs
-import CKClient from '../ck-client.js';
+import CKClient, { VERSION as CLIENT_VERSION } from '../ck-client.js';
+import CK, { VERSION as CK_VERSION } from '../ck.js';
+import fs from 'node:fs';
 
 let pass = 0, fail = 0;
 const ok = (n, c) => { if (c) { pass++; console.log('  ✅', n); } else { fail++; console.log('  ❌', n); } };
@@ -152,6 +154,25 @@ console.log('ck-client.js — id-scoped dispatch subject (verified → own id se
   d.auth = { anonymous: false, userId: 'alice', claims: { sub: 'alice' }, token: 't' };
   await d.dispatch('agent.execute', 'ckp://Kernel#demo-board', {});
   ok('delegated agent.* → target kernel, not id-scoped', d.__lastSubject === 'input.kernel.demo-board.action.agent.execute');
+}
+
+
+// ── version self-identification (2026-08-18 — v1.5.12) ───────────────────────────────────────────
+// cklib shipped NO version identifier through v1.5.11. Measured: no version string in ck.js /
+// ck-client.js / ck-store.js, no manifest at the door's /cklib/, none in the client cache — so a
+// consumer holding the exact bytes could not name its own release, and ck_doctor reported
+// "cklib 1.5.10" on the same line as the v1.5.11 digest (b99b06ad…) it had just computed.
+// These asserts are the point of the fix: a label that CAN drift from package.json is the defect,
+// so the constants are pinned here and the release ritual fails loudly rather than shipping a lie. ──
+console.log('ck.js / ck-client.js — version is self-identifying and pinned to package.json');
+{
+  const pkg = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+  ok('ck.js exports VERSION', typeof CK_VERSION === 'string' && CK_VERSION.length > 0);
+  ok('ck-client.js exports VERSION', typeof CLIENT_VERSION === 'string' && CLIENT_VERSION.length > 0);
+  ok(`ck.js VERSION === package.json (${CK_VERSION} === ${pkg.version})`, CK_VERSION === pkg.version);
+  ok(`ck-client.js VERSION === package.json (${CLIENT_VERSION} === ${pkg.version})`, CLIENT_VERSION === pkg.version);
+  ok('both files agree with each other', CK_VERSION === CLIENT_VERSION);
+  ok('CK facade surfaces it (CK.VERSION)', CK.VERSION === pkg.version);
 }
 
 console.log(`\n${fail === 0 ? '✅ PASS' : '❌ FAIL'} — ${pass} passed, ${fail} failed`);

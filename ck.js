@@ -13,6 +13,14 @@
 
 import CKStore from './ck-store.js';
 
+// SELF-IDENTIFYING ARTIFACT (v1.5.12). cklib shipped no version identifier through v1.5.11: not in
+// these files, not in a manifest, not in the door's /cklib/ payload. A consumer holding the exact
+// bytes could not tell which release it held, so EVERY version claim about cklib was out-of-band and
+// unverifiable — including ck_doctor's, which reported "1.5.10" on the same line as the v1.5.11 digest
+// it had just computed. A label that lives beside the bytes drifts from them; one that lives IN the
+// bytes cannot. Pinned to package.json by tests/smoke-ck-client.mjs, so the two can never disagree.
+export const VERSION = '1.5.12';
+
 /** Normalize a kernel name or URN to the canonical `ckp://Kernel#<Name>` form. */
 export function normalizeKernel(kernel) {
   if (typeof kernel !== 'string' || !kernel.length) throw new Error('CK.activate: kernel name or URN required');
@@ -347,6 +355,7 @@ export class ConceptKernel {
  * asserts identity), subscribes the kernel's granted scope, and returns a live handle.
  */
 export const CK = {
+  VERSION,
   async activate(kernel, opts = {}) {
     const kernelUrn = normalizeKernel(kernel);
 

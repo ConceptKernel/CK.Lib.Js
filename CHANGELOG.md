@@ -2,6 +2,38 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.12] — 2026-08-18
+
+Makes the artifact self-identifying. Small change, and it closes a class of defect rather than an
+instance of one.
+
+- **`VERSION` is now exported from `ck.js` and `ck-client.js`, and surfaced as `CK.VERSION`.**
+  Through v1.5.11 cklib shipped **no version identifier at all** — measured: no version string in
+  `ck.js` / `ck-client.js` / `ck-store.js`, no manifest at the door's `/cklib/`, none in the client
+  cache. A consumer holding the exact bytes could not name its own release, so **every version claim
+  about cklib was out-of-band and unverifiable.**
+  - **What that cost, observed live:** `ck_doctor` reported `cklib CK.Lib.Js 1.5.10` on the same
+    line as the digest `b99b06ad…` it had just computed — which *is* v1.5.11's `ck.js`,
+    byte-identical. The label and the measurement beside it disagreed, and nothing in the artifact
+    could settle it. A label that lives **beside** the bytes drifts from them; one that lives **in**
+    the bytes cannot.
+  - **Pinned, not merely added.** `tests/smoke-ck-client.mjs` asserts both constants equal
+    `package.json.version` and each other, so the release ritual fails loudly rather than shipping a
+    mislabelled artifact. **Falsified before trusting it:** deliberately setting `ck.js` to `1.5.11`
+    against a `1.5.12` package produces **3 failures**, not a silent pass.
+
+**Verification:** `tests/smoke-ck-client.mjs` — **35 passed, 0 failed** (was 29; +6 version asserts).
+
+**Grounding (measured / reported):** pgck-mcp **0.2.109** (measured, `ck_doctor`, after reconnect) ·
+door-served cklib confirmed at v1.5.11 bytes before this release (`ck.js` `b99b06ad…`; served
+`ck-client.js` carries the redaction and **zero** `{...this.auth}` spreads) · pgCK **0.4.76**
+(reported). No substrate change required: this release adds no wire surface and no verb.
+
+> **Known delivery gap, unchanged by this release.** The npm package `@conceptkernel/cklib` is
+> published at **1.0.0** and `dist-tags.latest` points there; npm steps stay gated on repo var
+> `NPM_PUBLISH`, which is unset. **npm consumers do not have the v1.5.11 credential fix.** The OCI
+> bundle and the door are current; npm is not.
+
 ## [1.5.11] — 2026-08-17
 
 A security fix and a routing fix. The first is the reason to upgrade promptly.
