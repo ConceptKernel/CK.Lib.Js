@@ -1,43 +1,43 @@
 # CK.Lib.Js — latest published artifacts
 
-One publishable surface ships from this repo today: the **OCI static bundle** (`ckp:static`) per [SPEC.OCI.BUNDLE.v0.4](https://github.com/sporaxis-com/oci-germination/blob/main/SPEC.OCI.BUNDLE.v0.4.md), attestation-gated (this file renders only after `gh attestation verify` passes). The npm package `@conceptkernel/cklib` is staged in `package.json` (publish **deferred** until npm auth lands; the workflow's npm steps are gated on repo var `NPM_PUBLISH`). See [Repo packages view](https://github.com/ConceptKernel/CK.Lib.Js/pkgs/container/ck-lib-js) for the full version history.
+One publishable surface ships from this repo today: the **OCI static bundle** (`ckp:static`) per [SPEC.OCI.BUNDLE.v0.4](https://github.com/sporaxis-com/oci-germination/blob/main/SPEC.OCI.BUNDLE.v0.4.md), attestation-gated (this file renders only after `gh attestation verify` passes). **npm is not a delivery channel** for this library (operator ruling 2026-08-18): publishing is disabled deliberately — the workflow gate is off and `package.json` carries `"private": true`. Note `@conceptkernel/cklib@1.0.0` remains on the public registry from an early publish and is **not a supported artifact**. See [Repo packages view](https://github.com/ConceptKernel/CK.Lib.Js/pkgs/container/ck-lib-js) for the full version history.
 
-## CK.Lib.Js OCI bundle — `v1.5.12`
+## CK.Lib.Js OCI bundle — `v1.5.13`
 
 Per [`PROVENANCE.md`](./PROVENANCE.md), every digest below verifies under `gh attestation verify oci://… --repo ConceptKernel/CK.Lib.Js`. Versions before v1.3.9 predate the attestation wiring and never appear here — re-publishing them would change digests and break the immutability promise.
 
-`docker pull ghcr.io/conceptkernel/ck-lib-js:1.5.12` → declare as a `static_web` (routed) or `layer_sources` (additive merge) entry in your `bundle.yaml` per SPEC.OCI.BUNDLE.v0.4. The bundle lands the facade + transport + cache at image root (`/ck.js`, `/ck-client.js`, `/ck-store.js`, `/vendor/`) ready for spec-standard `COPY --from=cklib_source / dest/`.
+`docker pull ghcr.io/conceptkernel/ck-lib-js:1.5.13` → declare as a `static_web` (routed) or `layer_sources` (additive merge) entry in your `bundle.yaml` per SPEC.OCI.BUNDLE.v0.4. The bundle lands the facade + transport + cache at image root (`/ck.js`, `/ck-client.js`, `/ck-store.js`, `/vendor/`) ready for spec-standard `COPY --from=cklib_source / dest/`.
 
 | arch  | Pull URI                                | Also tagged | Digest                                                                  | Created (UTC)       |
 |-------|-----------------------------------------|-------------|-------------------------------------------------------------------------|---------------------|
-| amd64 | `ghcr.io/conceptkernel/ck-lib-js:1.5.12` | `latest`  | `sha256:2106eaba16be24836dcd9ff77c019bd44b5c762ed4ebb0ffc4b6593e4693fb7b` | 2026-08-18 01:20:41 UTC |
-| arm64 | `ghcr.io/conceptkernel/ck-lib-js:1.5.12` | `latest`  | `sha256:4f49688cf61c77d3e75445afaab7040b54de23841bdb62647ef7c67a02a97a4f` | 2026-08-18 01:20:41 UTC |
+| amd64 | `ghcr.io/conceptkernel/ck-lib-js:1.5.13` | `latest`  | `sha256:4f5547777a1b6f9a82e46f523268df090760e5fb9c5f0a6a2b88d09d7f825e37` | 2026-08-26 10:03:23 UTC |
+| arm64 | `ghcr.io/conceptkernel/ck-lib-js:1.5.13` | `latest`  | `sha256:0d9ec0e4351e65fec51621e4c4e9f9326e6e866d10fb877b0a26ba29d5fa063c` | 2026-08-26 10:03:23 UTC |
 
 |                       |                                                                                                |
 |-----------------------|------------------------------------------------------------------------------------------------|
 | Artifact type         | OCI image index (multi-arch); `org.opencontainers.image.designation=ckp:static`               |
-| Aggregate index       | `ghcr.io/conceptkernel/ck-lib-js:1.5.12` (also tagged `latest`)                              |
-| Aggregate digest      | `sha256:5516b8e38ad4a4bbf7b6568e3ab51522b4cbf1df299fe3f56e531a46fc303d2f`                                                                                    |
+| Aggregate index       | `ghcr.io/conceptkernel/ck-lib-js:1.5.13` (also tagged `latest`)                              |
+| Aggregate digest      | `sha256:7257f3ad799a09c0ed4ea707cc16f426a2b88a18186e90fdea15d5832ab2a0d0`                                                                                    |
 | Provenance            | SLSA Build Provenance v1, Sigstore-backed, pushed as OCI referrer                              |
-| Built by              | [Workflow run #32087820712](https://github.com/ConceptKernel/CK.Lib.Js/actions/runs/32087820712)                          |
-| Built from commit     | [`51960e7dc93379fb5b35a3034c541c290f250266`](https://github.com/ConceptKernel/CK.Lib.Js/commit/51960e7dc93379fb5b35a3034c541c290f250266)                                          |
-| Verify (CLI)          | `gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:1.5.12 --repo ConceptKernel/CK.Lib.Js`            |
-| Release notes         | https://github.com/ConceptKernel/CK.Lib.Js/releases/tag/v1.5.12                                                  |
+| Built by              | [Workflow run #32956167671](https://github.com/ConceptKernel/CK.Lib.Js/actions/runs/32956167671)                          |
+| Built from commit     | [`f2b5a32b28769a29ad6e9881b99e916e51ce3f30`](https://github.com/ConceptKernel/CK.Lib.Js/commit/f2b5a32b28769a29ad6e9881b99e916e51ce3f30)                                          |
+| Verify (CLI)          | `gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:1.5.13 --repo ConceptKernel/CK.Lib.Js`            |
+| Release notes         | https://github.com/ConceptKernel/CK.Lib.Js/releases/tag/v1.5.13                                                  |
 | Repo packages view    | https://github.com/ConceptKernel/CK.Lib.Js/pkgs/container/ck-lib-js                                             |
 
 ## Verifying any artifact above
 
 ```sh
 # Multi-arch index (Docker's manifest negotiation picks the right arch)
-gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:1.5.12 \
+gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:1.5.13 \
   --repo ConceptKernel/CK.Lib.Js
 
 # A specific per-arch leaf
-gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js@sha256:2106eaba16be24836dcd9ff77c019bd44b5c762ed4ebb0ffc4b6593e4693fb7b \
+gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js@sha256:4f5547777a1b6f9a82e46f523268df090760e5fb9c5f0a6a2b88d09d7f825e37 \
   --repo ConceptKernel/CK.Lib.Js
 ```
 
-A successful verify means: signed by GitHub's Fulcio CA against the OIDC token of the v1.5.12 `oci-publish` workflow run, recorded in Sigstore's Rekor transparency log, subject digest matches the pulled artifact.
+A successful verify means: signed by GitHub's Fulcio CA against the OIDC token of the v1.5.13 `oci-publish` workflow run, recorded in Sigstore's Rekor transparency log, subject digest matches the pulled artifact.
 
 ## Use as static layer
 
@@ -47,17 +47,17 @@ In your `bundle.yaml` (per [SPEC.OCI.BUNDLE.v0.3](https://github.com/sporaxis-co
 spec_version: 0.3
 # Shape A — routed mount under a path the FastAPI/static server exposes:
 static_web:
-  - source_image: ghcr.io/conceptkernel/ck-lib-js:1.5.12
+  - source_image: ghcr.io/conceptkernel/ck-lib-js:1.5.13
     route: /cklib
     attestation_repo: ConceptKernel/CK.Lib.Js
 # …or additive filesystem merge into the final image:
 layer_sources:
-  - source_image: ghcr.io/conceptkernel/ck-lib-js:1.5.12
+  - source_image: ghcr.io/conceptkernel/ck-lib-js:1.5.13
     into: /app/cklib/
     attestation_repo: ConceptKernel/CK.Lib.Js
 ```
 
-The build MUST run `gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:1.5.12 --repo ConceptKernel/CK.Lib.Js` before the consuming image is pushed (SPEC.OCI.BUNDLE.v0.3 §4 build-time gate).
+The build MUST run `gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:1.5.13 --repo ConceptKernel/CK.Lib.Js` before the consuming image is pushed (SPEC.OCI.BUNDLE.v0.3 §4 build-time gate).
 
 Browser consumption (after the bundle is mounted at `/cklib/`):
 
@@ -72,7 +72,7 @@ Browser consumption (after the bundle is mounted at `/cklib/`):
 ## Pin policy
 
 - `latest` tracks the most recent attested CK.Lib.Js tag on the multi-arch image index. Both arches resolve transparently via Docker's manifest negotiation — no `latest-amd64` / `latest-arm64` split.
-- Tagged versions are immutable on GHCR. Pin by version (`1.5.12`) in production bundles; use `latest` only for development.
+- Tagged versions are immutable on GHCR. Pin by version (`1.5.13`) in production bundles; use `latest` only for development.
 - The OCI bundle is anonymous public pull — no GHCR auth required.
 - Per [`PROVENANCE.md`](./PROVENANCE.md) Rule 2: do not consider an artifact "shipped" if its digest does not verify under `gh attestation verify`.
 
@@ -80,4 +80,4 @@ See [`CHANGELOG.md`](./CHANGELOG.md) for what changed per version, [`COMPLIANCE.
 
 ---
 
-> Rendered automatically by `.github/workflows/oci-publish.yml` on 2026-08-18 01:20:41 UTC after `gh attestation verify` accepted the aggregate digest above.
+> Rendered automatically by `.github/workflows/oci-publish.yml` on 2026-08-26 10:03:23 UTC after `gh attestation verify` accepted the aggregate digest above.
