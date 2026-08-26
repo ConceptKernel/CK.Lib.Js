@@ -673,6 +673,11 @@ class CKClient {
     async _maybeRefreshToken() {
         if (!this.auth.refreshToken || !this.auth.expiresAt) return;
         if (Date.now() + 30000 < this.auth.expiresAt.getTime()) return;
+        // D3 (v1.5.13): a dead auth endpoint is not retried unbounded. Consecutive failures back
+        // off (30s→60s→120s→300s cap); after 5 the loop is TERMINAL — anonymous fallback (v1.3
+        // rule) and ONE status emission carrying refreshExhausted. Re-auth is the app's move.
+        if (this._refreshExhausted) return;
+        if (this._refreshNextAttempt && Date.now() < this._refreshNextAttempt) return;
         try {
             const url = `${this.config.authEndpoint}/realms/${this.config.realm}/protocol/openid-connect/token`;
             const res = await fetch(url, {
@@ -696,11 +701,28 @@ class CKClient {
             this.auth.expiresAt = new Date(Date.now() + d.expires_in * 1000);
             if (d.refresh_token) this.auth.refreshToken = d.refresh_token;
             this.auth.claims = this._parseJwt(d.access_token);
+            this._refreshFailures = 0; this._refreshNextAttempt = 0;      // D3: success resets
             // v1.3 locked: reconnect on token refresh to refresh server-side permissions
             if (this.nc) await this._reconnectWithCurrentAuth();
             this._emitStatus();
         } catch (e) {
+            this._refreshFailed();
             console.warn('[CKClient] Token refresh failed:', e.message);
+        }
+    }
+
+    // D3 (v1.5.13): consecutive-failure accounting for _maybeRefreshToken's network-failure path.
+    // (An auth-server refusal — !res.ok — already self-terminates via the anonymous fallback.)
+    _refreshFailed() {
+        this._refreshFailures = (this._refreshFailures || 0) + 1;
+        const backoff = [30000, 60000, 120000, 300000];
+        this._refreshNextAttempt = Date.now() + backoff[Math.min(this._refreshFailures - 1, backoff.length - 1)];
+        if (this._refreshFailures >= 5) {
+            this._refreshExhausted = true;
+            this._setAnonymous();
+            if (this.nc) this._reconnectWithCurrentAuth().catch(() => {});
+            this._refreshExhaustedPending = true;                          // one-shot, consumed by _emitStatus
+            this._emitStatus();
         }
     }
 
@@ -763,11 +785,17 @@ class CKClient {
         // replayable credential. No spread here, ever: a spread leaks every FUTURE auth field by
         // default; the allowlist is the contract.
         const a = this.auth || {};
-        this._emit('status', {
-            connection: this.connection,
-            auth: { anonymous: !!a.anonymous, userId: a.userId ?? null, exp: a.claims?.exp ?? null, hasToken: !!a.token },
-            error,
-        });
+        // D4 (v1.5.13): tier is derived (never caller-supplied) and a CHANGE of tier is loud —
+        // the same event carries tierChanged:{from,to}, because every write after a downgrade
+        // attributes differently. refreshExhausted rides exactly one event (D3's give-up).
+        // The allowlist rule stands: no spread, no credential, ever.
+        const tier = (!a.anonymous && a.token) ? 'verified' : 'anonymous';
+        const auth = { anonymous: !!a.anonymous, userId: a.userId ?? null, exp: a.claims?.exp ?? null, hasToken: !!a.token, tier };
+        if (this._refreshExhaustedPending) { auth.refreshExhausted = true; this._refreshExhaustedPending = false; }
+        const evt = { connection: this.connection, auth, error };
+        if (this._lastTier && this._lastTier !== tier) evt.tierChanged = { from: this._lastTier, to: tier };
+        this._lastTier = tier;
+        this._emit('status', evt);
     }
 
     _emit(event, data) {
@@ -783,7 +811,7 @@ class CKClient {
 if (typeof window !== 'undefined') window.CKClient = CKClient;
 // Self-identifying: the door serves ck-client.js separately, so a consumer may hold this file
 // without ck.js. Pinned equal to ck.js VERSION and package.json by the smoke suite.
-const VERSION = '1.5.12';
+const VERSION = '1.5.13';
 
 export { CKClient, VERSION, msgpackEncode, msgpackDecode };
 export default CKClient;

@@ -19,7 +19,7 @@ import CKStore from './ck-store.js';
 // unverifiable — including ck_doctor's, which reported "1.5.10" on the same line as the v1.5.11 digest
 // it had just computed. A label that lives beside the bytes drifts from them; one that lives IN the
 // bytes cannot. Pinned to package.json by tests/smoke-ck-client.mjs, so the two can never disagree.
-export const VERSION = '1.5.12';
+export const VERSION = '1.5.13';
 
 /** Normalize a kernel name or URN to the canonical `ckp://Kernel#<Name>` form. */
 export function normalizeKernel(kernel) {
@@ -56,6 +56,15 @@ const isUnknownAffordance = (r) => r && r.ok === false && (r.error === 'unknown_
 /** The substrate's honest degrade on a derived read (pgCK#4 wire contract, ≥0.4.16): the value is
  *  materializing over budget — `recompute_in_progress: true` is the answer, never a stale/guessed value. */
 export const isRecomputing = (r) => !!(r && r.ok === true && r.recompute_in_progress === true);
+
+/** The three-outcome split as data (v1.5.13, T-D5) — a PURE structural read of flags the
+ *  substrate sent; decides nothing, computes nothing:
+ *    'result'  — ok:true. The data is the answer.
+ *    'refusal' — ok:false + refused:true. A RESULT: the gate spoke; `error` names the clause
+ *                (render it verbatim) and `sqlstate` names the class.
+ *    'fault'   — everything else (timeout, transport death, refused unknown). NO VERDICT WAS
+ *                REACHED — never render as a judgment on the request; query before retrying. */
+export const outcomeOf = (r) => (r && r.ok === true) ? 'result' : (r && r.refused === true) ? 'refusal' : 'fault';
 
 // pgCK ≤0.4.x replies carry no uniform `.result`; each verb returns its own field. Map them so the
 // `.result`-keyed ingest + typed reads fire. (Reply-envelope normalization is pgCK design-Q1; per-verb
@@ -102,7 +111,11 @@ function toFilterArray(filter) {
  *  `.urn` (full IRI form) + `.local` (bare local part) so callers never do URN surgery (`bare()`) or
  *  guess between `.id`/`.iri`. `.id` is preserved unchanged (non-breaking). */
 function writeResult(reply) {
-  if (!reply || reply.ok === false) return { ok: false, id: reply?.id ?? null, error: reply?.error, violations: reply?.violations, allowed: reply?.allowed };
+  // D2 (v1.5.13): the refusal class survives the envelope. A refusal ({refused:true, sqlstate})
+  // is a RESULT — the gate spoke; a fault (refused absent → null = unknown) reached no verdict
+  // and must never render as a judgment on the request. Dropping these two keys made the
+  // three-outcome split (result/refusal/fault) unimplementable for every consumer.
+  if (!reply || reply.ok === false) return { ok: false, id: reply?.id ?? null, error: reply?.error, refused: reply?.refused ?? null, sqlstate: reply?.sqlstate ?? null, violations: reply?.violations, allowed: reply?.allowed };
   const id = reply.id ?? reply.result?.['@id'] ?? null;
   const urn = reply.result?.['@id'] ?? reply.id ?? null;
   const local = id != null ? String(urn ?? id).split(/[#/]/).pop() : null;
@@ -240,7 +253,10 @@ export class ConceptKernel {
   // none (CL-D2). The caller supplies the IRI, as with every other type.
   async notify(from, predicate, to, body = {}) { return writeResult(await this.do(OP_VERB.link, { source: from, predicate, target: to, body, event: true })); }
   async retire(id, reason) { return writeResult(await this.do(OP_VERB.retire, { id, reason })); }
-  async verify(id) { const r = await this.do(OP_VERB.verify, { id }); return { verified: r?.verified ?? !!r?.proof_digest, proof_digest: r?.proof_digest ?? null, seq: r?.seq }; }
+  // U7 (v1.5.13, D1): same rule as writeResult — `verified` is the substrate's verdict verbatim,
+  // absent means null. A proof digest attests hashing/chaining, never conformance; manufacturing
+  // one from the other was the exact defect #16 removed one function over.
+  async verify(id) { const r = await this.do(OP_VERB.verify, { id }); return { verified: r?.verified ?? null, proof_digest: r?.proof_digest ?? null, seq: r?.seq }; }
   async provenance(id, depth) { const r = await this.do(OP_VERB.provenance, { id, depth }); return r?.result ?? r; }
   async snapshot(scope) { const r = await this.do(OP_VERB.snapshot, scope ? { scope } : {}); return r?.result ?? []; }
   /** TE-4: governed concept.match (pgCK T6, ≥0.4.13) — full-text or token match against the kernel's

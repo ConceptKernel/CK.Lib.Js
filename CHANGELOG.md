@@ -2,6 +2,54 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.13] — 2026-08-26
+
+Four honesty fixes, TDD-first, plus the wire gate. Written against the CKP v3.12 corpus
+(spec set: `SPEC.CK-LIB-JS.v1.5.13.md` · `SPEC.CK-OPERATIONS.v1.5.13.md` · `GUIDE.v1.5.13.md`,
+local). `tests/smoke-honesty.mjs` was written first and ran **RED against v1.5.12: 14 failures**
+across exactly the four defects; all 24 asserts green after the fixes. Full chain:
+**136 passed, 0 failed** across six suites.
+
+- **D1 — `verify()` stops manufacturing a verdict.** `verified: r?.verified ?? !!r?.proof_digest`
+  (`ck.js` verify) was the exact U7 defect #16 removed from `writeResult` in v1.5.11, alive at a
+  second site. Now verbatim; absent = `null`, never `true`. **Observable change:** a reply
+  carrying `proof_digest` and no `verified` previously reported `true`, now `null` (falsy either
+  way for `if (v.verified)`).
+- **D2 — the refusal class survives the envelope.** The `ok:false` branch of `writeResult`
+  dropped `refused` and `sqlstate`, erasing the substrate's refusal-vs-fault distinction one
+  function above every consumer — the v3.12 pump contract was unimplementable over it. Both now
+  pass through verbatim; `refused` absent ⇒ `null` (unknown), never `false`-by-default. Additive.
+- **D3 — the refresh loop backs off and gives up loudly.** The network-failure path retried a
+  dead auth endpoint every tick, unbounded, silently (third-party measured; acknowledged in
+  finding-1787228066092025000). Now: 30s→60s→120s→300s backoff, terminal after 5 consecutive
+  failures — anonymous fallback (v1.3 rule) + exactly one status emission carrying
+  `auth.refreshExhausted: true`. A success resets the counter. Re-auth is the app's move.
+- **D4 — an identity downgrade is loud.** Status events gain derived `auth.tier`
+  (`verified | anonymous`); a tier change carries top-level `tierChanged: {from, to}` on the
+  same event — as loud as a disconnect, because every write after it attributes differently.
+  The v1.5.11 redaction allowlist is unchanged: no credential on any event (regression-asserted).
+- **NEW `outcomeOf(reply)` export (T-D5)** — the three-outcome split as data:
+  `'result' | 'refusal' | 'fault'`. A pure structural read of flags the substrate sent
+  (zero authority — decides nothing, computes nothing); the raw material every consumer needs
+  to stop collapsing refusals into faults. RED-first like the rest.
+- **NEW `tests/wire/door-suite.mjs`** — the wire gate (operator's north star): structural
+  (subject-grammar grants, probed per-subject, with a `>` canary that marks all GRANTED
+  *uncertain* if it fails to refuse) + post-structural (bi-directional dispatch: typed read,
+  must-refuse negative control, sealed-event plane on a granted tier). Three-state honesty:
+  a REFUSED is a result; only FAULT fails the run. First run 2026-08-26 against the
+  operator-flagged out-of-sync door: **NOT-PROVEN, honestly** (canary granted ⇒ grant surface
+  uncertain; dispatch replies absent). Re-run owed against a synced bench before this tag ships.
+
+**Verification:** `npm test` — smoke-ck 28 · smoke-ck-store 24 · smoke-ck-client 35 (incl.
+version asserts at 1.5.13) · smoke-derived 13 · smoke-ergonomics 12 · smoke-honesty 30 —
+**142/0**. Real-path + wire runs against a live, in-sync pgCK/pgRDF bench are the remaining
+release-gate items (SPEC.CK-LIB-JS.v1.5.13 §4.3).
+
+**Grounding (measured / reported):** pgCK ext **v0.4.81** published (LATEST.md, CI 2026-08-22);
+CKP v3.12 RC2 root `7de02b35…` (reported from the pgCK working tree); the pgck.localhost door
+was operator-flagged out-of-sync during this release's authoring — no kernel-plane claims were
+refreshed past 2026-08-26 morning.
+
 ## [1.5.12] — 2026-08-18
 
 Makes the artifact self-identifying. Small change, and it closes a class of defect rather than an
