@@ -167,11 +167,11 @@ All governance (affordance, validation, seal) is in pgCK.
 | Feature | Status | Notes |
 |---------|--------|-------|
 | Core JSON protocol | ✓ shipped | Baseline interop; all governance in pgCK |
-| NATS WSS client | ✓ shipped | nats.ws; request/reply + streaming |
+| NATS WSS client | ✓ shipped | nats.ws over `/wss` — THE one data plane. Replies are **published** on `result.kernel.<k>.<verb>` and correlated by `Trace-Id`; the door does **not** speak NATS request/reply (`nc.request()` times out against a healthy door — measured). |
 | Subject family dispatch | ✓ shipped | input/result/event/stream |
 | Error handling | ✓ shipped | Timeouts, connection drops, malformed JSON |
 | Type hints (JSDoc) | ✓ shipped | Basic TS compatibility |
-| npm publishing | ✓ shipped | GitHub Actions → npmjs |
+| npm publishing | ✗ **disabled deliberately** | NOT a delivery channel (operator ruling 2026-08-18; SPEC.CK-DOOR §3): workflow gate off + `"private": true`. Channels are the attested OCI bundle and the door's `/cklib/`. |
 
 **Browser support:** ES2020+  
 **Node.js support:** 18+
@@ -188,7 +188,7 @@ All governance (affordance, validation, seal) is in pgCK.
 | **Dockerfile generation** | ⧗ planned | Multi-platform (amd64, arm64) Node.js 20 runtime |
 | **Dev HTTP server** | ⧗ planned | Serve CK.Lib.Js for browser testing |
 | **GHCR publishing** | ⧗ planned | GitHub Actions → ghcr.io/conceptkernel/bundle-ck-lib-js |
-| **Smoke test** | ⧗ planned | Verify npm install, HTTP server startup, NATS WSS connectivity |
+| **Smoke test** | ✓ shipped | `npm test` (6 suites, mock transport) + the wire kit `tests/wire/` (door-confirm · door-suite · door-beat) against a live door |
 | **Sporaxis integration** | ⧗ planned | Add bundle-ck-lib-js to Sporaxis oci-germination build matrix |
 
 **OCI image target:** <150 MiB (Node.js alpine base)  

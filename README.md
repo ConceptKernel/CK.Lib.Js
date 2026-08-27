@@ -92,15 +92,17 @@ import { CKStore }  from "@conceptkernel/cklib/internal/store";      // typed ca
 Today's live channel is the **attested OCI bundle** — pin the current tag from [`LATEST.md`](./LATEST.md):
 
 ```dockerfile
-FROM ghcr.io/conceptkernel/ck-lib-js:1.5.3 AS cklib_source           # attested + byte-verified; LATEST.md carries the current tag + digests
+FROM ghcr.io/conceptkernel/ck-lib-js:1.5.15 AS cklib_source          # attested + byte-verified; pin by DIGEST in production — LATEST.md carries current tag + digests
 COPY --from=cklib_source / /app/cklib/
 ```
 
-```bash
-# DEFERRED: npm publish of the 1.5.x client is wired (Sigstore provenance) but not yet live.
-# Until then `npm install @conceptkernel/cklib` resolves the legacy 1.0.0 — use the OCI bundle above.
-npm install @conceptkernel/cklib
-```
+> **npm is NOT a delivery channel for cklib** (operator ruling 2026-08-18; SPEC.CK-DOOR §3).
+> Publishing is disabled *deliberately*, not pending: the workflow gate is off and
+> `package.json` carries `"private": true`. The two channels are the **attested OCI bundle**
+> above and the **door's own `/cklib/`** (same origin as `/wss` — the deployment's own face).
+> ⚠ `@conceptkernel/cklib@1.0.0` remains on the public registry from an early publish and
+> `dist-tags.latest` still resolves to it: **`npm i @conceptkernel/cklib` returns a 2026-era
+> build that is not a supported artifact and has none of the security work.** Do not install it.
 
 ## Release state
 
@@ -110,7 +112,8 @@ digests — this table states each channel's *stance*, not a version number (a d
 | Channel | State |
 |---|---|
 | OCI `ghcr.io/conceptkernel/ck-lib-js` | **current release** — the full surface above; attested + byte-verified (`ck.js` + `ck-client.js` + `ck-store.js` + `vendor/` + README + LICENSE). Current tag + digests: [`LATEST.md`](./LATEST.md). |
-| npm `@conceptkernel/cklib` | `1.0.0` is **legacy (CKP v3.5 era) — do not use.** The modern dispatch-only client is the OCI bundle above; npm publish of the 1.5.x client (Sigstore provenance) is **wired but deferred** — gated on repo var `NPM_PUBLISH` until npm auth lands. |
+| door `/cklib/` | **current release, live** — served same-origin with `/wss` by every CK deployment (SPEC.CK-DOOR §1); version-affine with the substrate behind it. Read the version from the artifact: `import { VERSION } from '/cklib/ck.js'`. |
+| npm `@conceptkernel/cklib` | **NOT A CHANNEL — disabled deliberately** (operator ruling 2026-08-18). `1.0.0` on the registry is legacy (CKP v3.5 era) and **must not be installed**; publishing of the 1.5.x line is off at the workflow gate *and* by `"private": true`. |
 
 Treat OCI `:1.4.1`/`:1.4.2` as `:1.4.0` — see `CHANGELOG.md` `[1.4.3]`. Requires pgCK ≥ 0.4 for the
 governed `instance.*` surface; pre-CI-E gaps degrade honestly (empty results, never fabricated ones).
