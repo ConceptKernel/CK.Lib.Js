@@ -59,10 +59,14 @@ const rung = (id, name, r, expected = null) => {
 };
 const skip = (id, name, why) => { ladder.push({ id, name, outcome: 'SKIPPED', why }); console.log(`  ⏭  ${id} ${name} — ${why}`); };
 
-const c = new CKClient({ kernel: KERNEL, gov: KERNEL, wssEndpoint: DOOR,
+// v1.5.14: writes ride the id-form subject via claimSub (CLAIMED identity — dev-shell
+// mechanics; on OIDC benches the broker enforces the segment). CONNECT stays credential-less
+// unless CK_TOKEN targets a callout bench.
+const SUB = process.env.CK_SUB || 'bot-ck-lib-js';
+const c = new CKClient({ kernel: KERNEL, gov: KERNEL, wssEndpoint: DOOR, claimSub: SUB,
   ...(TOKEN ? { tokenProvider: async () => TOKEN } : {}) });
 await c.connect();
-console.log(`door-beat — ${DOOR} · kernel ${KERNEL} · run ${RUN} · tier ${TOKEN ? 'token' : 'anonymous'}\n`);
+console.log(`door-beat — ${DOOR} · kernel ${KERNEL} · run ${RUN} · claimed sub ${SUB} (${TOKEN ? 'token' : 'anonymous shell'})\n`);
 const dp = (verb, payload) => Promise.race([
   c.dispatch(verb, `ckp://Kernel#${KERNEL}`, payload),
   new Promise((res) => setTimeout(() => res({ __timeout: true }), WAIT)),

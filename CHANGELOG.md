@@ -2,6 +2,38 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.14] — 2026-08-26
+
+The client learns the wire's true protocol, measured the same day on the live v3.12 bench
+(pgck 0.4.82 · pgrdf 0.6.34 · v3.12 FINAL — confirmed by this component, both halves).
+TDD-first: every delta RED before its fix; full chain **149 passed / 0 failed** (six suites).
+
+- **`claimSub` (T-D6)** — the id-form write path decoupled from CONNECT credentials. Wire
+  law, measured: writes ride `input.kernel.<k>.id.<sub>.action.<verb>`; a no-callout broker
+  REFUSES bearers at CONNECT (`Authorization Violation`), so identity is the subject segment,
+  credential-less. Before: writes were unreachable through the shipped client on anonymous
+  shells. Now: `{claimSub: '<sub>'}` builds the id-form when anonymous — CLAIMED ≠ VERIFIED,
+  never minted into auth, never sent to CONNECT; OIDC benches enforce the segment. Proven
+  live: the door-beat ladder germinated + transacted through the shipped client.
+- **`dispatchMode:'v3.9'` retired loudly (T-D7)** — `ckp.dispatch` is dead on the substrate
+  (broker-certified zero subscribers; ruled permanent by pgCK). Constructor now throws with
+  the teaching text instead of guaranteeing a first-dispatch timeout.
+- **`hint` survives the envelope (T-D2 ext)** — measured refusal envelope is
+  `{ok:false, req, hint, error}`; the hint is the substrate teaching the cure and now passes
+  through `writeResult` verbatim. Substrate gap flagged (PASS-2, not papered over): this path
+  emits no `refused`/`sqlstate` yet, so refusal-shaped answers classify as `'fault'` until
+  pgCK emits the flag — the client will not manufacture it from text.
+- **Docs:** `SPEC.CK-OPERATIONS.v1.5.14.md` is THE agent handout for driving a kernel over
+  the wire (grammars, published-replies law, envelope truths, roster/warm-up rules, CKN
+  capability coverage map, worked session). Plus `GUIDE.v1.5.14.md` and the
+  `SPEC.CK-LIB-JS.v1.5.14.md` delta.
+
+**Wire evidence this release rests on (same day):** v3.12 FINAL confirmed (wire
+`composed_nodeshapes:30` + served file/sidecar `7de02b35…` == tag v0.4.82) · kernel
+`ck-lib-js` germinated over the wire (id-form, claimed `bot-ck-lib-js`) · beat-ladder run
+`beat-mta445t7`: 14 rungs, reads/germinate/propose transacting; vote/apply `invalid_about`
+and the missing refusal-flag filed for PASS-2.
+
 ## [1.5.13] — 2026-08-26
 
 Four honesty fixes, TDD-first, plus the wire gate. Written against the CKP v3.12 corpus

@@ -159,9 +159,26 @@ class CKClient {
         // v1.5.0 dispatch-transport state (additive over the v1.3 NATS client).
         this._pending = new Map();          // traceId → { resolve, reject, timer } (request/reply correlation)
         this._scopeListeners = new Set();   // fn(instance|reply) — granted-scope delivery for subscribe()
+        // v1.5.14 (T-D7): dispatchMode 'v3.9' is RETIRED. `ckp.dispatch` is dead on the substrate —
+        // broker-certified no-responders (A8, 2026-08-26) and pgCK's own ruling: "nothing has ever
+        // subscribed it; it will never answer" (SPEC.pgCK.v3.12-to-CKLIBJS §2.2). Refusing loudly at
+        // construction beats a guaranteed timeout at first dispatch.
+        if (config.dispatchMode === 'v3.9') {
+            throw new Error(
+                "CKClient: dispatchMode 'v3.9' (the ckp.dispatch closed ingress) is retired — " +
+                "nothing has ever subscribed ckp.dispatch on the substrate and it will never answer " +
+                "(measured: broker-certified no-responders, 2026-08-26; ruled dead by pgCK). " +
+                "Use the default subject grammar; writes ride the id-form segment.");
+        }
         this._dispatchMode = config.dispatchMode || 'v3.8';      // v3.8 subject-grammar shim until pgCK CI-B
-        this._dispatchIngress = config.dispatchIngress || 'ckp.dispatch';
         this._dispatchTimeout = config.dispatchTimeout || 15000;
+        // v1.5.14 (T-D6): CLAIMED identity for the id-form write path on anonymous shells.
+        // Wire law (SPEC.pgCK.v3.12-to-CKLIBJS §3): identity rides the id-form SUBJECT segment,
+        // credential-less at CONNECT — a no-callout broker REFUSES presented bearers outright, so
+        // the claim must never touch auth/CONNECT state. On OIDC benches the callout enforces the
+        // segment against the connection's own sub, and a mismatched claim is refused by the broker.
+        // CLAIMED ≠ VERIFIED: this is a mechanism for dev benches, never a certified property.
+        this._claimSub = config.claimSub || null;
         // Governance door: governed verbs (instance.*/kernel.*/instances.*/affordances/concept.match) are
         // answered HERE (input.kernel.<gov>.action.<verb> → result.kernel.<gov>.<verb>), not on the target
         // kernel's subject. Only DELEGATED agent.* verbs ride the target kernel (the harness). Mirrors ck-bus.
@@ -317,7 +334,7 @@ class CKClient {
             // NOT identity assertion — the broker permits ONLY the connection's own id (surfaced from its
             // verified token via this.auth); a forged segment is denied and never seals. Anonymous
             // connections and delegated agent.* verbs use the legacy subject (anonymous seal; back-compat).
-            const idSub = (!delegated && !this.auth.anonymous && (this.auth.claims?.sub ?? this.auth.userId)) || null;
+            const idSub = (!delegated && ((!this.auth.anonymous && (this.auth.claims?.sub ?? this.auth.userId)) || this._claimSub)) || null;
             subject = idSub
                 ? `input.kernel.${routeKernel}.id.${idSub}.action.${verb}`
                 : `input.kernel.${routeKernel}.action.${verb}`;   // v3.8 subject-grammar shim (removed at CI-B)
@@ -811,7 +828,7 @@ class CKClient {
 if (typeof window !== 'undefined') window.CKClient = CKClient;
 // Self-identifying: the door serves ck-client.js separately, so a consumer may hold this file
 // without ck.js. Pinned equal to ck.js VERSION and package.json by the smoke suite.
-const VERSION = '1.5.13';
+const VERSION = '1.5.14';
 
 export { CKClient, VERSION, msgpackEncode, msgpackDecode };
 export default CKClient;

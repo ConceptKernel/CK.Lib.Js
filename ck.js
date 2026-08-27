@@ -19,7 +19,7 @@ import CKStore from './ck-store.js';
 // unverifiable — including ck_doctor's, which reported "1.5.10" on the same line as the v1.5.11 digest
 // it had just computed. A label that lives beside the bytes drifts from them; one that lives IN the
 // bytes cannot. Pinned to package.json by tests/smoke-ck-client.mjs, so the two can never disagree.
-export const VERSION = '1.5.13';
+export const VERSION = '1.5.14';
 
 /** Normalize a kernel name or URN to the canonical `ckp://Kernel#<Name>` form. */
 export function normalizeKernel(kernel) {
@@ -115,7 +115,10 @@ function writeResult(reply) {
   // is a RESULT — the gate spoke; a fault (refused absent → null = unknown) reached no verdict
   // and must never render as a judgment on the request. Dropping these two keys made the
   // three-outcome split (result/refusal/fault) unimplementable for every consumer.
-  if (!reply || reply.ok === false) return { ok: false, id: reply?.id ?? null, error: reply?.error, refused: reply?.refused ?? null, sqlstate: reply?.sqlstate ?? null, violations: reply?.violations, allowed: reply?.allowed };
+  // v1.5.14: `hint` passes through too — measured on the live wire (2026-08-26): the dispatch
+  // refusal envelope is {ok:false, req, hint, error}, and the hint IS the substrate teaching
+  // ("must be the full class IRI…"). Dropping it threw away the best documentation on the wire.
+  if (!reply || reply.ok === false) return { ok: false, id: reply?.id ?? null, error: reply?.error, hint: reply?.hint ?? null, refused: reply?.refused ?? null, sqlstate: reply?.sqlstate ?? null, violations: reply?.violations, allowed: reply?.allowed };
   const id = reply.id ?? reply.result?.['@id'] ?? null;
   const urn = reply.result?.['@id'] ?? reply.id ?? null;
   const local = id != null ? String(urn ?? id).split(/[#/]/).pop() : null;

@@ -39,6 +39,11 @@ console.log('T-D2 — error results carry refused + sqlstate verbatim');
   ok('regression: violations preserved', Array.isArray(w.violations) && w.violations[0].path === 'section');
 }
 {
+  const k = mkKernel(() => ({ ok: false, error: 'type_must_be_iri', hint: 'instance.create {type} must be the full class IRI' }));
+  const w = await k.update('id1', {});
+  ok('v1.5.14: the hint (substrate teaching) survives the envelope', /full class IRI/.test(w.hint));
+}
+{
   const k = mkKernel(() => ({ ok: false, error: 'timeout' }));                       // a FAULT
   const w = await k.update('id1', {});
   ok('fault: refused is null (unknown), never false-by-default', w.refused === null);
@@ -130,6 +135,41 @@ console.log('T-D5 — outcomeOf(reply): result | refusal | fault, structurally')
   ok('refused:null (the D2 unknown) → "fault"', outcomeOf({ ok: false, refused: null, error: 'x' }) === 'fault');
   ok('null/undefined reply → "fault"', outcomeOf(null) === 'fault' && outcomeOf(undefined) === 'fault');
   ok('writeResult round-trip: a refusal classifies as refusal', outcomeOf({ ok: false, refused: true }) === 'refusal');
+}
+
+// ── T-D6 (v1.5.14): claimSub — the id-form write path decoupled from connect credentials ─────
+// Wire law (SPEC.pgCK.v3.12-to-CKLIBJS §3): on anonymous shells identity rides the id-form
+// SUBJECT segment, credential-less at CONNECT; on OIDC benches the same subject is broker-
+// enforced. claimSub is the CLAIMED-identity carrier for dev shells — a mechanism, never a
+// certified property, and never sent to the broker's CONNECT.
+console.log('T-D6 — claimSub drives the id-form subject without touching CONNECT');
+{
+  const c = new CKClient({ kernel: 'ck-lib-js', gov: 'ck-lib-js', claimSub: 'bot-ck-lib-js', subscribe: ['result'] });
+  c._maybeRefreshToken = async () => {};
+  c.nc = { publish: (subject) => { c.__lastSubject = subject; const t = [...c._pending.keys()].pop(); if (t) c._resolvePending(t, { ok: true }); },
+           subscribe: () => ({ [Symbol.asyncIterator]() { return { next: async () => ({ done: true }) }; }, unsubscribe() {} }) };
+  await c.dispatch('kernel.germinate', 'ckp://Kernel#ck-lib-js', { project: 'ck-lib-js' });
+  ok('anonymous + claimSub → id-form subject', c.__lastSubject === 'input.kernel.ck-lib-js.id.bot-ck-lib-js.action.kernel.germinate');
+  await c.dispatch('agent.execute', 'ckp://Kernel#ck-lib-js', {});
+  ok('delegated agent.* stays on the bare target subject (unchanged)', c.__lastSubject === 'input.kernel.ck-lib-js.action.agent.execute');
+  ok('claimSub never reaches auth state (no token minted, still anonymous)', c.auth.anonymous === true && c.auth.token === null);
+}
+{
+  const c = new CKClient({ kernel: 'ck-lib-js', gov: 'ck-lib-js', subscribe: ['result'] });
+  c._maybeRefreshToken = async () => {};
+  c.nc = { publish: (subject) => { c.__lastSubject = subject; const t = [...c._pending.keys()].pop(); if (t) c._resolvePending(t, { ok: true }); },
+           subscribe: () => ({ [Symbol.asyncIterator]() { return { next: async () => ({ done: true }) }; }, unsubscribe() {} }) };
+  await c.dispatch('instance.create', 'ckp://Kernel#ck-lib-js', { type: 'urn:x' });
+  ok('no claimSub, anonymous → bare grammar (unchanged default)', c.__lastSubject === 'input.kernel.ck-lib-js.action.instance.create');
+}
+
+// ── T-D7 (v1.5.14): dispatchMode 'v3.9' is retired LOUDLY — ckp.dispatch is dead forever ─────
+console.log('T-D7 — the dead v3.9 ingress refuses at construction, naming its funeral');
+{
+  let threw = null;
+  try { new CKClient({ kernel: 't', dispatchMode: 'v3.9' }); } catch (e) { threw = e; }
+  ok('constructor throws on dispatchMode v3.9', !!threw);
+  ok('the error teaches (names ckp.dispatch as dead, cites the measurement)', !!threw && /ckp\.dispatch/.test(threw.message) && /dead|never/i.test(threw.message));
 }
 
 console.log(`\nsmoke-honesty: ${pass} passed, ${fail} failed`);
