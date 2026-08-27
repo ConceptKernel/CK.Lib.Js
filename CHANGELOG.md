@@ -2,6 +2,35 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.5.15] — 2026-08-27
+
+The catch-up release for pgCK v0.4.83–v0.4.87 (the five-release night that closed every
+issue our PASS-2 filed). Measured first, changed second; TDD throughout — full chain
+**151 passed / 0 failed**. And the milestone this line existed for: **the door-beat ladder
+is PROVEN through the shipped client** (run `beat-mtazk1yg`, kernel `ck-lib-js`, claimed sub
+`bot-ck-lib-js`): germinate → propose → vote → apply (epoch 2) → seal with declared stamps →
+verify → provenance — 16 rungs, 0 transport faults.
+
+- **D9 — the snake_case stamp shim is RETIRED** (T-D9). Its stated removal condition arrived:
+  pgck 0.4.84 (`ckp._stamped`) declares the write-reply envelope; measured keys are camelCase
+  (`createdBy · producedBy · sealedAtEpoch` + `verified`/`proof_digest`). Snake-only stamps
+  now read null-honest. The v1.5.12 promise ("drop it the release after the envelope is
+  declared") kept exactly.
+- **No other code change was needed — measured, not assumed:** `outcomeOf` classifies the new
+  typed refusal registry (0.4.83: `refused:true` + `sqlstate` + `hint`, 52 declared codes,
+  readable via `surface.refusals`) correctly as-is; the facade's `vote()/apply()` already
+  sent `{about}` — the wire's new teaching refusal confirmed the contract and exposed that
+  PASS-2's `invalid_about` was our ladder rung's raw payload, not the client.
+- **Docs at v1.5.15:** `SPEC.CK-OPERATIONS.v1.5.15.md` — the agent handout, updated with the
+  registry law ("an ok:false whose error is not in the set is fault-shaped"), the governance
+  contract, declared stamps, the ghost-read guard (0.4.86 `module_not_adopted`), and the CKN
+  axis map now reading Tier-1/SEAL/VALIDATE/PROVE/EPOCH as wire-proven. Plus
+  `GUIDE.v1.5.15.md`. Pass record: `CKP.v3.12.CK.Lib.Js.PASS-3.md`.
+
+**Known residue, tracked not hidden:** pgCK's pinned RED case 31 (`ckp.seal` shape-gate /
+not-admitted refusals still prose, no flag) — those classify fault-shaped until it closes;
+module placement stays bench-side until governed ingestion lands (v3.12-⏳).
+
 ## [1.5.14] — 2026-08-26
 
 The client learns the wire's true protocol, measured the same day on the live v3.12 bench

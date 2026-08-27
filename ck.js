@@ -19,7 +19,7 @@ import CKStore from './ck-store.js';
 // unverifiable — including ck_doctor's, which reported "1.5.10" on the same line as the v1.5.11 digest
 // it had just computed. A label that lives beside the bytes drifts from them; one that lives IN the
 // bytes cannot. Pinned to package.json by tests/smoke-ck-client.mjs, so the two can never disagree.
-export const VERSION = '1.5.14';
+export const VERSION = '1.5.15';
 
 /** Normalize a kernel name or URN to the canonical `ckp://Kernel#<Name>` form. */
 export function normalizeKernel(kernel) {
@@ -138,18 +138,18 @@ function writeResult(reply) {
   // kernel processed the instance into being. conformsToShape: WHICH shape gated the body — its
   // absence on a reply is itself information (a vacuous / pre-adoption seal, per the epoch-0 fence),
   // which is why null is surfaced rather than papered over.
-  //
-  // SHIM, with a removal condition: the snake_case reads exist only because the reply envelope is not
-  // yet a declared contract (pgCK owes it). Drop the snake_case alternatives the moment the envelope
-  // is declared — same discipline as the v3.8 subject-grammar shim, not an open-ended fallback.
   return {
     ok: true, id, urn, local,
     verified: reply.verified ?? null,
     proof_digest: reply.proof_digest ?? null,
-    createdBy: reply.createdBy ?? reply.created_by ?? null,
-    sealedAtEpoch: reply.sealedAtEpoch ?? reply.sealed_at_epoch ?? null,
-    producedBy: reply.producedBy ?? reply.produced_by ?? null,
-    conformsToShape: reply.conformsToShape ?? reply.conforms_to_shape ?? null,
+    // v1.5.15 (T-D9): the snake_case shim is RETIRED — its stated removal condition arrived.
+    // pgCK 0.4.84 (ckp._stamped) declares the reply envelope; measured on the live wire, the
+    // stamps ride camelCase. A snake-only reply now reads null-honest, exactly like any other
+    // absent field — the shim died the release after the declaration, as promised in v1.5.12.
+    createdBy: reply.createdBy ?? null,
+    sealedAtEpoch: reply.sealedAtEpoch ?? null,
+    producedBy: reply.producedBy ?? null,
+    conformsToShape: reply.conformsToShape ?? null,
     seq: reply.seq,
   };
 }

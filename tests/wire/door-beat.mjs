@@ -91,10 +91,11 @@ if (w3.outcome !== 'FAULT') {
   const prop = await dp('kernel.propose_change', { op: 'add_class', about: `urn:ckp:${KERNEL}/kernel`,
     detail: { class: NOTE, label: 'BeatNote', comment: `door-beat ${RUN}: quorum 1 is rehearsal, stated here` } });
   const pr = rung('W4a', 'propose add_class BeatNote', prop);
-  const pid = prop?.id ?? prop?.proposal ?? prop?.result?.['@id'] ?? null;
+  // 0.4.83 contract, taught by the wire itself: vote/apply read {about: <ckp://Proposal#…>}
+  const pid = prop?.proposal_iri ?? prop?.id ?? prop?.proposal ?? prop?.result?.['@id'] ?? null;
   if (pr.outcome === 'result' && pid) {
-    rung('W4b', 'vote approve (self — rehearsal)', await dp('kernel.vote', { proposalIri: pid, value: 'approve' }));
-    const ap = rung('W4c', 'apply (epoch should advance)', await dp('kernel.apply', { proposalIri: pid }));
+    rung('W4b', 'vote approve (self — REHEARSAL, said in the seal)', await dp('kernel.vote', { about: pid, value: 'approve' }));
+    const ap = rung('W4c', 'apply (epoch should advance)', await dp('kernel.apply', { about: pid }));
     applied = ap.outcome === 'result';
   } else skip('W4b/W4c', 'vote/apply', 'no proposal id came back');
 } else skip('W4', 'governed change', 'germination faulted');

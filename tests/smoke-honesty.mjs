@@ -137,6 +137,23 @@ console.log('T-D5 — outcomeOf(reply): result | refusal | fault, structurally')
   ok('writeResult round-trip: a refusal classifies as refusal', outcomeOf({ ok: false, refused: true }) === 'refusal');
 }
 
+// ── T-D9 (v1.5.15): the snake_case stamp shim retires — the envelope is DECLARED camelCase ──
+// pgCK 0.4.84 (ckp._stamped) declares the write-reply stamps; measured on the live wire:
+// ["id","ok","req","type","verified","createdBy","producedBy","proof_digest","sealedAtEpoch"].
+// The v1.5.12 shim's removal condition ("drop the snake_case reads the moment the envelope is
+// declared") is MET — a snake-only reply now yields null-honest stamps instead of shim reads.
+console.log('T-D9 — snake_case stamp shim retired (declared envelope is camelCase)');
+{
+  const k = mkKernel(() => ({ ok: true, id: 'x', createdBy: 'urn:ckp:participant:p', sealedAtEpoch: 2, producedBy: 'urn:k', conformsToShape: null }));
+  const w = await k.update('x', {});
+  ok('declared camelCase stamps pass through', w.createdBy === 'urn:ckp:participant:p' && w.sealedAtEpoch === 2 && w.producedBy === 'urn:k');
+}
+{
+  const k = mkKernel(() => ({ ok: true, id: 'x', created_by: 'urn:ckp:participant:p', sealed_at_epoch: 2, produced_by: 'urn:k' }));
+  const w = await k.update('x', {});
+  ok('snake_case-only stamps are NO LONGER read (shim gone; null-honest)', w.createdBy === null && w.sealedAtEpoch === null && w.producedBy === null);
+}
+
 // ── T-D6 (v1.5.14): claimSub — the id-form write path decoupled from connect credentials ─────
 // Wire law (SPEC.pgCK.v3.12-to-CKLIBJS §3): on anonymous shells identity rides the id-form
 // SUBJECT segment, credential-less at CONNECT; on OIDC benches the same subject is broker-
