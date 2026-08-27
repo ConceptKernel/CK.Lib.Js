@@ -8,9 +8,10 @@ Point them at ANY deployment (a fresh ck-allinone, a new bench, a candidate bund
 export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"   # node ignores the OS keychain
 export CK_DOOR=wss://<host>/wss CK_KERNEL=<rostered-kernel>
 
-node tests/wire/door-confirm.mjs    # 1. ROOT gate (read-only): which law runs here?
-                                    #    wire shape-count + served-file/sidecar digest match
-                                    #    [CK_ROOT_SHA=… CK_SHAPES=… CK_ONTOLOGY=…]
+node tests/wire/door-confirm.mjs    # 1. ROOT gate (read-only): which LAW runs here?
+                                    #    BINDING: structural digest of the LOADED law, via
+                                    #    surface.grounding through the door (no HTTP needed)
+                                    #    [CK_STRUCT_SHA=… CK_ROOT_SHA=… CK_SHAPES=… CK_ONTOLOGY=…]
 node tests/wire/door-suite.mjs      # 2. OBSERVER (read-only): bench health (auth-storm,
                                     #    wire-openness), grant surface w/ `>` canary,
                                     #    bi-directional reply axis  [--json]
@@ -24,10 +25,15 @@ node tests/wire/door-beat.mjs       # 3. BURN (DESTRUCTIVE, guarded): the full l
 **One fleet exit protocol** (aligned with pgCK `v312-tdd` and ocig `local-tdd`,
 2026-08-27): **0 = GREEN · 44 = RED-measured (a refusal is a result; negative findings
 recorded honestly) · other = BROKEN (the instrument could not measure — never read as a
-verdict on the door).** Confirm: the FILE DIGEST is the binding criterion (byte-exact,
-deployment-independent); the composed shape count is deployment-dependent (root +
-adoptions — a bundle sealing wave+lexicon at init reports 47, a virgin root 30) and is
-informational unless pinned with `CK_SHAPES`.
+verdict on the door).** Confirm's **three digest planes, never interchanged** (corrected 2026-08-27 — pgCK named
+the red herring: served bytes prove what a deployment SHIPS, never what it ENFORCES;
+"proximity is not adoption", applied to confirmation): **STRUCTURAL** (binding — the loaded
+law, `surface.grounding → structuralDigest`, fleet-portable, wire-native) · **FILE**
+(packaging — OPT-IN only via `CK_ONTOLOGY`; **the kit has NO /ontology dependency** —
+packaging verification belongs in the consumer's build gate, offline against the attested
+artifact) · **COPY** (bench-local, ignored). The composed shape count is deployment-dependent (root + adoptions: 47 with
+wave+lexicon; the 0.4.87 lexicon revision moves it again — a pinned count goes false-RED
+on module updates) and stays informational unless pinned with `CK_SHAPES`.
 
 **The admission matrix** (measured by oci-germination on their artifact, confirmed against
 our §CONNECT rule — the diagonal is the trap, and it is symmetric):
