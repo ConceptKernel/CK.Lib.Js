@@ -1,5 +1,47 @@
 # Wire gate — bi-directional NATS through a real door
 
+## The burn kit — three entrypoints, all directable at any door via env
+
+Point them at ANY deployment (a fresh ck-allinone, a new bench, a candidate bundle):
+
+```sh
+export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"   # node ignores the OS keychain
+export CK_DOOR=wss://<host>/wss CK_KERNEL=<rostered-kernel>
+
+node tests/wire/door-confirm.mjs    # 1. ROOT gate (read-only): which law runs here?
+                                    #    wire shape-count + served-file/sidecar digest match
+                                    #    [CK_ROOT_SHA=… CK_SHAPES=… CK_ONTOLOGY=…]
+node tests/wire/door-suite.mjs      # 2. OBSERVER (read-only): bench health (auth-storm,
+                                    #    wire-openness), grant surface w/ `>` canary,
+                                    #    bi-directional reply axis  [--json]
+CK_BEAT=1 CK_SUB=<party> \
+node tests/wire/door-beat.mjs       # 3. BURN (DESTRUCTIVE, guarded): the full ladder —
+                                    #    germinate → govern → seal → prove → adopt →
+                                    #    recon pair → wave/lex, three-state honest,
+                                    #    run-id stamped into everything it creates
+```
+
+**One fleet exit protocol** (aligned with pgCK `v312-tdd` and ocig `local-tdd`,
+2026-08-27): **0 = GREEN · 44 = RED-measured (a refusal is a result; negative findings
+recorded honestly) · other = BROKEN (the instrument could not measure — never read as a
+verdict on the door).** Confirm: the FILE DIGEST is the binding criterion (byte-exact,
+deployment-independent); the composed shape count is deployment-dependent (root +
+adoptions — a bundle sealing wave+lexicon at init reports 47, a virgin root 30) and is
+informational unless pinned with `CK_SHAPES`.
+
+**The admission matrix** (measured by oci-germination on their artifact, confirmed against
+our §CONNECT rule — the diagonal is the trap, and it is symmetric):
+
+| | no token | valid token |
+|---|---|---|
+| **callout ON** (OIDC) | connects; SUB denied, WRITE denied (on that bundle: NO access — do not assume "subscribe-only") | SUB ok · WRITE seals |
+| **callout OFF** (anon shell) | SUB ok · WRITE seals (id-form claim) | **Authorization Violation at CONNECT** |
+
+One posture per door, never both: `CK_SUB` (claimed) on anon shells; `CK_TOKEN` on OIDC
+benches. Grant scope under a callout is the DEPLOYMENT's policy — measure it with
+door-suite, never assume it. Before diagnosing a dead door: rostered? (silence ≠ refusal) ·
+within ~10s of restart? (warm-up — retry once).
+
 North star (operator, 2026-08-26): mirror pgCK's v3.12 TDD discipline — **structural** and
 **post-structural** — but **over the wire**, measuring what the door *allows* (the grant
 surface) and *communicates* (replies, refusals, sealed events), with the shipped client as the

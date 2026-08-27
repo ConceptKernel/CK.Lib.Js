@@ -29,7 +29,7 @@ import { outcomeOf } from '../../ck.js';
 
 if (process.env.CK_BEAT !== '1') {
   console.log('door-beat: DESTRUCTIVE suite — refusing without CK_BEAT=1 (it writes to the bench\'s permanent record).');
-  process.exit(3);
+  process.exit(1);   // fleet protocol: not-run = BROKEN, never GREEN
 }
 
 const DOOR   = process.env.CK_DOOR   || 'wss://pgck.localhost/wss';
@@ -144,5 +144,7 @@ function finish() {
   console.log(`\ndoor-beat: ${ladder.length} rungs · ${failed} failed · ${faults} faults · seal-and-prove ${proven ? 'PROVEN' : 'NOT PROVEN'}`);
   console.log(JSON.stringify({ run: RUN, ladder }, null, 1).slice(0, 4000));
   c?.nc?.close?.().catch?.(() => {});
-  process.exit(proven && failed === 0 ? 0 : proven ? 1 : 2);
+  // fleet exit protocol: 0 GREEN (seal-and-prove + no failed rungs) · 44 RED-measured
+  // (climbed and measured, some rungs red — a refusal is a result) · 1 BROKEN (never climbed)
+  process.exit(proven && failed === 0 ? 0 : proven ? 44 : 1);
 }

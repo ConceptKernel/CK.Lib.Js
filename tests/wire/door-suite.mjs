@@ -168,5 +168,7 @@ function finish() {
   }
   client?.nc?.close?.().catch?.(() => {});
   try { globalThis.dispatcher?.nc?.close?.().catch?.(() => {}); } catch {}
-  process.exit(report.verdict === 'PROVEN' ? 0 : report.verdict === 'PROVEN-WITH-FAULTS' ? 1 : 2);
+  // fleet exit protocol: 0 GREEN · 44 RED-measured (bi-directional proven but faults/negative
+  // findings recorded) · 1 BROKEN (could not prove the axis at all)
+  process.exit(report.verdict === 'PROVEN' ? 0 : report.verdict === 'PROVEN-WITH-FAULTS' ? 44 : 1);
 }
