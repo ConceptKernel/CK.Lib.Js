@@ -2,6 +2,51 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.6.1] — 2026-08-29
+
+**The determinism release — it works, or it errors, and the error says which.** Built to the
+charter ruled 2026-08-28 (no pre-v3.11 traced · no failovers · no defaults · one identity
+posture · promise-based events without topics), against `SPEC.CK-DOOR.v1.6.1` — the contract
+other-language SDKs (Rust next) build from. Bilaterally agreed ladder with pgCK (their PASS-5);
+9 suites, **196 passed / 0 failed**; gates 1+2 PROVEN live; beat ladder seal-and-prove PROVEN.
+
+### Breaking
+- **Refusals THROW, verbatim** (`refused`, `sqlstate`, untouched `reply`) — `query`/`reach`/
+  `govern` never again return `[]`/`null` for a refusal. An honest empty read still returns `[]`.
+- **`kernel` is required; unknown constructor options throw, naming the key.** Retired options
+  (`dispatchMode`, `claimSub`, `stateEndpoint`, `dictVersion`, `topicDefs`) are refused, not ignored.
+- **`gov` derives from the activated kernel** — the hardcoded uppercase literal the substrate
+  refuses by name is gone (M-1, found by pgCK). `slugKernel` lowercases unconditionally.
+- **id-form is the only publish** (`input.kernel.<gov>.id.<sub>.action.<verb>`); an
+  admitted-unverified connection throws at `connect()` — there is no anonymous tier.
+- **Deleted**: pre-v3.11 short-form subjects (three refused subscriptions per connect, measured) ·
+  the foreign-kernel dictionary feed · `saveState`/`loadState` (a REST path carrying the bearer,
+  shipped since v1.0.0) · `send()` · `instances.list` fallback · `kernels.list` adapter ·
+  `unknown_verb` widening · `list()` · `notify()` · `ckOn`/`wireCkOn` · the `./client` export alias.
+
+### Added
+- **`k.germinate({projectKind})`** — act one, first-class; throws locally when unsupplied.
+- **`k.surface.{check,refusals,typecheck,declared,unshaped,grounding}`** — the checker surface,
+  learnable before writing.
+- **The promise-first, subject-free bus**: `k.next()` (rejects on timeout) · `k.stream()` ·
+  `k.on/off/once` with semantic selectors (kind · verb · type · `mine`) · `late` (the reply that
+  arrived after its timeout — observation, never a retry) · `sealedAtEpoch` on every frame ·
+  `subjects()` as the single diagnostic accessor. No consumer types a NATS subject — so no
+  consumer can forge one.
+- **Completeness surfaced**: `rows.completeness` (non-enumerable) + `queryWithVerdict()`.
+- **`govern()` says rehearsal** — `rehearsal: true, rehearsalSource: 'client-derived'` on every
+  single-actor act, until pgCK stamps it server-side.
+- **Correlation hardened** (door §5): UUID trace ids (the 24-bit id collided at 8,036 dispatches,
+  measured) + the verb verified against the full reply-subject suffix before a published reply
+  resolves a pending dispatch.
+
+### Instruments
+- W0 admission is **measured** (`sub`/`iss`/`aud` from the connection), never env-derived.
+- Violations read from top-level `permissionContext` — the v1.5.x suite could never print
+  REFUSED and reported PROVEN while the broker logged violations. A canary-blind run now exits
+  BROKEN. Digest pins are env-only. Gate 2 proves per-run that the door serves the exact client
+  under test.
+
 ## [1.5.15] — 2026-08-27
 
 The catch-up release for pgCK v0.4.83–v0.4.87 (the five-release night that closed every

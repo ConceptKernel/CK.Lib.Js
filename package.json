@@ -1,6 +1,6 @@
 {
   "name": "@conceptkernel/cklib",
-  "version": "1.5.15",
+  "version": "1.6.1",
   "private": true,
   "description": "Attach JS hosts, tools and agents to a Concept Kernel — governed verbs, sealed provenance, typed reads over NATS-WSS with verified identity (v3.11-and-forward; vendored, air-gapped)",
   "type": "module",
