@@ -20,7 +20,7 @@ FROM scratch
 
 COPY ck.js ck-client.js ck-store.js /
 COPY vendor /vendor
-COPY README.md LICENSE /
+COPY LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
 LABEL org.opencontainers.image.description="CKP v3.9 dispatch-only concept-kernel JS client (vendored, air-gapped) — static folder mount artifact"

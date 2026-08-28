@@ -4,7 +4,7 @@ Proves the **shipped** client modules round-trip end-to-end through the **real**
 (browser → wss → relay → pgCK), **not** a mock transport and **not** `psql ckp.dispatch` (which
 bypasses the transport — exactly how the gov-routing timeout once slipped past us). See
 [`harness.js`](./harness.js) for the run procedure (docker-cp the modules into the dev env's
-`/app/cklib`, then `page.evaluate(() => runHarness(CK))` on `https://ck-lib-js.localhost/`).
+`/cklib`, then `page.evaluate(() => runHarness(CK))` on `https://pgck.localhost/`).
 
 ## Proof — 2026-06-19, vs `ociger-ck-allinone:v0.7.20` / pgCK `0.4.14` (real enforcement)
 

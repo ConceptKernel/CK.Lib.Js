@@ -11,7 +11,7 @@
 //        docker cp ck-client.js ck-lib-js-allinone:/app/cklib/ck-client.js
 //        docker cp ck-store.js  ck-lib-js-allinone:/app/cklib/ck-store.js
 //        docker cp vendor       ck-lib-js-allinone:/app/cklib/
-//   3. In a browser ON https://ck-lib-js.localhost/ (same origin as /cklib + /wss):
+//   3. In a browser ON https://pgck.localhost/ (same origin as /cklib + /wss):
 //        const { CK } = await import('/cklib/ck.js');
 //        const { runHarness } = await import('/cklib/tests/real-path/harness.js'); // or paste runHarness
 //        console.log(await runHarness(CK));

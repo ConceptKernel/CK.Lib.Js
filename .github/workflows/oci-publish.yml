@@ -236,7 +236,7 @@ jobs:
           - The OCI bundle is anonymous public pull — no GHCR auth required.
           - Per [\`PROVENANCE.md\`](./PROVENANCE.md) Rule 2: do not consider an artifact "shipped" if its digest does not verify under \`gh attestation verify\`.
 
-          See [\`CHANGELOG.md\`](./CHANGELOG.md) for what changed per version, [\`COMPLIANCE.md\`](./COMPLIANCE.md) for the transport contract, [\`README.md\`](./README.md) for the \`CK\` concept-kernel API.
+          See [\`CHANGELOG.md\`](./CHANGELOG.md) for what changed per version.
 
           ---
 

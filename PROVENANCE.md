@@ -133,6 +133,25 @@ Draft with full detail privately; post a **public-safe summary** that a stranger
 should be able to see without learning anything about private infrastructure. When in doubt, leave
 it out and ask.
 
+### Name the plane, not the bare symbol
+
+Before filing a defect against another repository's rule, read the **authoritative document**, not a
+condensed restatement of it. A one-line summary that drops a distinction still reads like a rule and
+travels like one — and the repository that acts on it pays for the compression.
+
+Worked example (2026-08-28). The symbol `ckp.dispatch` names **two different planes**: a retired
+NATS wire subject and the live SQL door function. A summary that carried only *"dead, nothing may
+depend on it"* produced two failures — a neighbouring repository's role-floor rule was marked
+**stale when it was current**, and hours were spent hunting a transport fault that did not exist,
+because a relay correctly forwarding wire subjects *into* the SQL function looked like a dependency
+on the dead one. Both planes now sit in a single table in the door specification's MUST NOT section,
+and in this repository's [`README.md`](./README.md#one-name-two-planes--ckpdispatch).
+
+The rule this generalises to: reference behaviour by **plane and public surface** — verb, version,
+digest, transport — never by a bare symbol name that more than one plane answers to. When a
+neighbouring repository's rule looks stale, re-measure before saying so; a stale-marking that turns
+out to be wrong is more expensive than the silence it replaced.
+
 ## Audit trail
 
 - Workflow source: `.github/workflows/oci-publish.yml` (single workflow does build + push + attest + verify + GitHub Release + LATEST.md write, in that order, all gated on attestation success)

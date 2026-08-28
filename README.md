@@ -1,125 +1,83 @@
-# CK.Lib.Js — operate concept kernels from JavaScript
+# CK.Lib.Js
 
-**Package:** [@conceptkernel/cklib](https://www.npmjs.com/package/@conceptkernel/cklib) ·
-**Substrate:** [pgCK](https://github.com/styk-tv/pgCK) (CKP v3.9) ·
-**License:** MIT
+**Attach to a concept kernel from JavaScript. Address meaning, never infrastructure.**
 
-A **concept kernel** is a small governed universe of typed facts. Everything in it — the kernel,
-every instance, every participant — has a **URN**. You address meaning, never infrastructure: there
-are no queues, no topics, no endpoints, no tables anywhere in this surface. Facts you write are
-validated against the kernel's sealed shapes, sealed with a cryptographic proof, and delivered as
-live events to everyone attached. Facts others write arrive at your handlers the same way. The
-kernel is the single source of truth *and* the message bus *and* the audit trail — because in a
-concept kernel those are one thing.
-
-A kernel comes to life with one bootstrap call on the substrate. From then on, anything that speaks
-JavaScript attaches to it by name.
-
-## Attach and operate
+A concept kernel is a small governed universe of typed facts. Everything in it — the kernel,
+every instance, every participant — has a URN. There are no queues, no topics, no endpoints and
+no tables anywhere in this surface.
 
 ```javascript
-import { CK } from "@conceptkernel/cklib";
+import { CK } from "/cklib/ck.js";
 
-const tasks = await CK.activate("Tasks");        // attach. that is the whole setup.
+const tasks = await CK.activate("tasks");        // attach. that is the whole setup.
 
-// Create something that did not exist a moment ago.
 const t = await tasks.create("Task", { title: "Review the Q3 draft", assignee: "ana" });
-//  → { ok: true, id: "task-…" } — shape-validated, sealed, proof-chained by the kernel
+//  → shape-validated, sealed, proof-chained — by the kernel, before it could land
 
-// React by URN — to this task, to the whole kernel, to a predicate. Things that
-// don't exist yet are valid addresses; the handler fires when they come to be.
-tasks.bind(`ckp://Instance#${t.id}`, (inst) => render(inst));
-tasks.bind("ckp://Kernel#Tasks",     (inst) => refreshBoard(inst));
-tasks.bind("ckp://Edge#mentioned",   (inst) => ping(inst));
-
-// Ana attaches from her own browser and drops a message on your task:
-//     await tasks.notify(t.id, "mentioned", { text: "deadline moved" });
-// Your bind fires, live. And the proof is already waiting:
-await tasks.verify(t.id);        // { verified: true, proof_digest: "9202c6…" }
-await tasks.provenance(t.id);    // the chain — who did what, in what order
+tasks.bind(`ckp://Instance#${t.id}`, render);    // react by URN
+await tasks.verify(t.id);                        // { verified: true, proof_digest: "9202c6…" }
 ```
 
-## What did *not* happen above
+## What did not happen there
 
-- You never named a queue, topic, connection string, or endpoint. None exist in this API.
-- You never wrote a subscription for Ana's message. **Addressing the URN was the subscription.**
-- You never validated the payload. The kernel's **sealed shape** did, before the fact could land —
-  an invalid write cannot exist.
-- You never built an audit trail. **Every fact carries one** from the moment it is created.
-- Nobody polled. The seal *is* the event.
+- You never named a queue, topic, connection string or endpoint. **None exist in this API.**
+- You never wrote a subscription. **Addressing the URN was the subscription.**
+- You never validated the payload. The kernel's sealed shape did — an invalid write cannot exist.
+- You never built an audit trail. Every fact carries one from the moment it is created.
+- Nobody polled. **The seal is the event.**
 
-## The capability surface
+## The shape of it
 
-| Capability | Operations | What the kernel guarantees |
-|---|---|---|
-| Write facts | `create` `update` `link` `transition` `retire` | shape-validated → sealed → proof-chained → emitted. Lifecycle moves are gated by the kernel's sealed state machine — an illegal transition cannot land |
-| Read, typed | `get` `query` `reach` `snapshot` | named, grantable reads. There is no query language on this surface — and none to inject |
-| Prove | `verify` `provenance` | proof digest and the full chain, for any URN, any time |
-| Pre-flight | `validate` | dry-run a body against the sealed shape before writing |
-| Address someone | `notify` | a sealed fact that is also a delivered event — messaging with provenance |
-| Change the rules | `propose` `vote` `apply` | the schema and verb set evolve by **governance**, not migration |
-| Discover | `affordances()` | what *this identity* may do *here* — nothing else is callable |
-| React | `bind` `bindOnce` `view` `urn` · `ckOn`/`wireCkOn` | URN-pattern handlers and reactive views fed by the live event scope |
-| Derived reads | `doFresh` · `isRecomputing` | server-computed values, fresh-only. While the substrate materializes over budget it answers an honest `recompute_in_progress` — `doFresh` re-polls with backoff (a re-dispatch *joins* the in-flight build); the client never computes, caches-as-answer, or interpolates a value |
+| | |
+|---|---|
+| **Write** | `create` `update` `link` `transition` `retire` — validated → sealed → proof-chained → emitted |
+| **Read** | `get` `query` `reach` `snapshot` — named, grantable reads. No query language on this surface, so none to inject |
+| **Prove** | `verify` `provenance` — the digest and the full chain, for any URN, any time |
+| **Govern** | `propose` `vote` `apply` — the schema and verb set evolve by governance, not migration |
+| **Discover** | `affordances()` — what *this identity* may do *here*. Nothing else is callable |
 
-All of it rides one closed door — every operation compiles to a governed dispatch
-(`k.do(verb, payload)` is the open form for any affordance the kernel declares).
+Every operation compiles to one governed dispatch through one door.
 
-## Identity and participation
+## Identity
 
-Identity is derived from the **verified JWT** on the connection — the client cannot assert who it
-is. Every sealed fact carries `created_by`. And "client" means anything: a browser page, a CLI, a
-service, an **LLM agent** — they all attach with the same four lines and operate under the same
-grants. A fleet of attached agents is *governable*, not merely connected: each one can only do what
-the kernel declares and its identity is granted, and everything it does is attributable and sealed.
+Identity comes from the **verified JWT on the connection** — the client cannot assert who it is,
+and every sealed fact carries who made it. "Client" means anything: a browser page, a CLI, a
+service, an LLM agent. They attach the same way and operate under the same grants, which is what
+makes a fleet of agents *governable* rather than merely connected.
 
-## Under the hood (you do not need this to use it)
+## Getting it
 
-The transport is NATS-over-WebSocket with Keycloak JWT auth, fully **vendored** (`vendor/` —
-zero dependencies, zero CDN fetches, runs air-gapped), with Trace-Id-correlated dispatch onto
-pgCK's single governed door. Artifacts are CI-built from the tag, SLSA-attested, and byte-verified
-(`gh attestation verify oci://ghcr.io/conceptkernel/ck-lib-js:<ver> --repo ConceptKernel/CK.Lib.Js`).
-Wire details: [`COMPLIANCE.md`](./COMPLIANCE.md).
+Two channels, both attested. **npm is not one of them.**
+
+- **The door's own `/cklib/`** — same origin as the kernel it talks to, version-affine with the
+  substrate behind it. This is the normal case: the deployment serves its own client.
+- **The attested OCI bundle** — `ghcr.io/conceptkernel/ck-lib-js`, pinned **by digest** in
+  production, with `gh attestation verify` in your build gate. Current tag and per-arch digests:
+  [`LATEST.md`](./LATEST.md).
+
+> ⚠ `@conceptkernel/cklib@1.0.0` sits on the public npm registry from an early publish and
+> `latest` still resolves to it. **It is not a supported artifact and has none of the security
+> work.** Do not install it. Publishing is disabled deliberately, not pending.
+
+## Under the hood
+
+NATS-over-WebSocket with JWT auth, fully vendored — zero dependencies, zero CDN fetches, runs
+air-gapped. Replies are *published*, not request-reply, which is why several parties observe one
+working surface live rather than each polling their own copy.
+
+Transport, cache and facade are separable if you need them:
 
 ```javascript
-import { CK, ConceptKernel, ckOn } from "@conceptkernel/cklib";      // the surface above
-import { CKClient } from "@conceptkernel/cklib/internal/client";     // transport only (advanced)
-import { CKStore }  from "@conceptkernel/cklib/internal/store";      // typed cache only (advanced)
+import { CK }       from "/cklib/ck.js";                  // the surface above
+import { CKClient } from "/cklib/ck-client.js";           // transport only (advanced)
+import { CKStore }  from "/cklib/ck-store.js";            // typed cache only (advanced)
 ```
 
-## Install
+## Repository
 
-Today's live channel is the **attested OCI bundle** — pin the current tag from [`LATEST.md`](./LATEST.md):
+[`CHANGELOG.md`](./CHANGELOG.md) — what changed, per version ·
+[`LATEST.md`](./LATEST.md) — CI-written release state ·
+[`PROVENANCE.md`](./PROVENANCE.md) — build provenance and release policy ·
+[`tests/README.md`](./tests/README.md) — how this is verified against a live door
 
-```dockerfile
-FROM ghcr.io/conceptkernel/ck-lib-js:1.5.15 AS cklib_source          # attested + byte-verified; pin by DIGEST in production — LATEST.md carries current tag + digests
-COPY --from=cklib_source / /app/cklib/
-```
-
-> **npm is NOT a delivery channel for cklib** (operator ruling 2026-08-18; SPEC.CK-DOOR §3).
-> Publishing is disabled *deliberately*, not pending: the workflow gate is off and
-> `package.json` carries `"private": true`. The two channels are the **attested OCI bundle**
-> above and the **door's own `/cklib/`** (same origin as `/wss` — the deployment's own face).
-> ⚠ `@conceptkernel/cklib@1.0.0` remains on the public registry from an early publish and
-> `dist-tags.latest` still resolves to it: **`npm i @conceptkernel/cklib` returns a 2026-era
-> build that is not a supported artifact and has none of the security work.** Do not install it.
-
-## Release state
-
-[`LATEST.md`](./LATEST.md) is the CI-written source of truth for the current version and per-arch
-digests — this table states each channel's *stance*, not a version number (a duplicated number rots).
-
-| Channel | State |
-|---|---|
-| OCI `ghcr.io/conceptkernel/ck-lib-js` | **current release** — the full surface above; attested + byte-verified (`ck.js` + `ck-client.js` + `ck-store.js` + `vendor/` + README + LICENSE). Current tag + digests: [`LATEST.md`](./LATEST.md). |
-| door `/cklib/` | **current release, live** — served same-origin with `/wss` by every CK deployment (SPEC.CK-DOOR §1); version-affine with the substrate behind it. Read the version from the artifact: `import { VERSION } from '/cklib/ck.js'`. |
-| npm `@conceptkernel/cklib` | **NOT A CHANNEL — disabled deliberately** (operator ruling 2026-08-18). `1.0.0` on the registry is legacy (CKP v3.5 era) and **must not be installed**; publishing of the 1.5.x line is off at the workflow gate *and* by `"private": true`. |
-
-Treat OCI `:1.4.1`/`:1.4.2` as `:1.4.0` — see `CHANGELOG.md` `[1.4.3]`. Requires pgCK ≥ 0.4 for the
-governed `instance.*` surface; pre-CI-E gaps degrade honestly (empty results, never fabricated ones).
-
-## References
-
-[`PROVENANCE.md`](./PROVENANCE.md) · [`LATEST.md`](./LATEST.md) · [`COMPLIANCE.md`](./COMPLIANCE.md) ·
-[`CHANGELOG.md`](./CHANGELOG.md) · [pgCK](https://github.com/styk-tv/pgCK) ·
-[oci-germination](https://github.com/sporaxis-com/oci-germination)
+MIT.
