@@ -21,13 +21,13 @@ const TOKEN  = process.env.CK_TOKEN  || null;
 const JSON_OUT = process.argv.includes('--json');
 const WAIT_MS = Number(process.env.CK_WAIT_MS || 4000);
 
-const report = { door: DOOR, kernel: KERNEL, tier: TOKEN ? 'token-supplied' : 'anonymous',
+const report = { door: DOOR, kernel: KERNEL, tier: 'unmeasured',
                  startedAt: new Date().toISOString(), structural: {}, postStructural: {}, faults: [] };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ── connect (the client under test IS the shipped client — no bespoke transport) ─────────────
 const client = new CKClient({
-  kernel: KERNEL, wssEndpoint: DOOR, subscribe: [],
+  kernel: KERNEL, gov: KERNEL, wssEndpoint: DOOR, subscribe: [],
   ...(TOKEN ? { tokenProvider: async () => TOKEN } : {}),
 });
 try {
@@ -35,6 +35,43 @@ try {
 } catch (e) {
   report.faults.push({ stage: 'connect', error: String(e?.message || e) });
   finish();
+}
+
+// ── W-1 — INSTRUMENT PROVENANCE: is the client we imported the client this door SERVES?
+//    The wire tests import ../../ck-client.js (the local tree). On bind-mounted dev benches the
+//    door serves the same bytes; on artifact doors it serves a pinned release. Either way the
+//    gate must STATE which client was under test, not assume it. This is the kit's only HTTP:
+//    a GET of the door's own §1 /cklib/ route, no bearer — asset fetch, never a data path.
+report.instrument = {};
+try {
+  const { createHash } = await import('node:crypto');
+  const { readFileSync } = await import('node:fs');
+  const origin = 'https://' + new URL(DOOR).host;
+  for (const f of ['ck.js', 'ck-client.js', 'ck-store.js']) {
+    const local = createHash('sha256').update(readFileSync(new URL(`../../${f}`, import.meta.url))).digest('hex');
+    const res = await fetch(`${origin}/cklib/${f}`).catch(() => null);
+    const served = res?.ok ? createHash('sha256').update(Buffer.from(await res.arrayBuffer())).digest('hex') : null;
+    report.instrument[f] = { local: local.slice(0, 12), served: served?.slice(0, 12) ?? 'unreachable',
+                            identical: served === local };
+  }
+  const allSame = Object.values(report.instrument).every((x) => x.identical);
+  report.instrument.verdict = allSame
+    ? 'door serves the EXACT client under test (bind-mounted tree) — wire results speak for the served client'
+    : 'door serves a DIFFERENT client than the one imported (pinned artifact, or stale mount) — wire results speak for the LOCAL client only';
+} catch (e) { report.instrument.error = String(e?.message || e); }
+
+// ── W0 — ADMISSION. What the door DID, not what env vars were set. `tier` was previously
+//    `TOKEN ? 'token-supplied' : 'anonymous'` — i.e. "did the operator set a variable", which
+//    is why an EXPIRED bearer (admitted unverified, looking exactly like a grant failure) was
+//    the one trap this kit documented and could not catch.
+{
+  const a = client.auth || {}, cl = a.claims || {};
+  report.admission = { verified: !a.anonymous, sub: cl.sub ?? a.userId ?? null,
+                       iss: cl.iss ?? null, aud: cl.aud ?? null, exp: cl.exp ?? null,
+                       kid: a.kid ?? null };
+  report.tier = a.anonymous ? 'UNVERIFIED' : 'verified';
+  if (a.anonymous) report.faults.push({ stage: 'W0 admission',
+    error: 'admitted WITHOUT a verified identity — this door is NON-CONFORMANT (CK-DOOR v1.6.1 §2/§3). Every grant row below is void for acceptance.' });
 }
 
 // ── BENCH HEALTH preflight — name the environment before judging anything on it ──────────────
@@ -63,12 +100,16 @@ report.benchHealth = {};
     : null;
 }
 
-// permission violations arrive async on the connection status stream — capture per subject
+// Permission violations arrive async on the connection status stream. THE SUBJECT LIVES ON
+// `s.permissionContext` — TOP-LEVEL, beside `data`, not inside it. `s.data` is the error CODE
+// ("PERMISSIONS_VIOLATION"), so the old `/permissions violation/i` test on it could never match
+// (space vs underscore) and this suite was STRUCTURALLY INCAPABLE of rendering REFUSED on any
+// door. Fixed v1.6.1; the canary below is what proves it stays fixed.
 const violations = [];
 (async () => { try {
   for await (const s of client.nc.status()) {
-    const txt = String(s?.data ?? s?.error ?? '');
-    if (/permissions violation/i.test(txt)) violations.push(txt);
+    const pc = s?.permissionContext;                       // { operation, subject, queue }
+    if (pc?.subject) violations.push({ op: pc.operation, subject: pc.subject });
   }
 } catch {} })();
 
@@ -90,7 +131,7 @@ for (const [subject, kind] of Object.entries(SUBJECTS)) {
     const sub = client.nc.subscribe(subject);
     (async () => { try { for await (const _ of sub) {} } catch {} })();
     await sleep(600);
-    const refused = violations.slice(before).some((v) => v.includes(`"${subject}"`));
+    const refused = violations.slice(before).some((v) => v.subject === subject);
     report.structural[subject] = { kind, state: refused ? 'REFUSED' : 'GRANTED' };
     if (refused) sub.unsubscribe?.();
   } catch (e) {
@@ -104,7 +145,7 @@ for (const [subject, kind] of Object.entries(SUBJECTS)) {
 // standing result subscription, so the structural client's bare `subscribe: []` must not be
 // reused here (measured 2026-08-26: reusing it turned every probe into a self-inflicted FAULT).
 const dispatcher = new CKClient({
-  kernel: KERNEL, wssEndpoint: DOOR,
+  kernel: KERNEL, gov: KERNEL, wssEndpoint: DOOR,
   ...(TOKEN ? { tokenProvider: async () => TOKEN } : {}),
 });
 try { await dispatcher.connect(); } catch (e) {
@@ -151,11 +192,17 @@ function finish() {
     report.structuralCaveat = 'CANARY GRANTED: ">" was not refused — either this door is wide open or the violation capture is blind on this transport. Treat every GRANTED as UNCERTAIN until the canary refuses.';
   }
   const biDirectional = Object.values(report.postStructural).some((p) => p.state === 'RESULT' || p.state === 'REFUSED');
-  report.verdict = report.faults.length === 0 && biDirectional ? 'PROVEN'
+  // A gate that cannot fail what it claims is not a gate. If the `>` canary was GRANTED, either
+  // the door is wide open or violation capture is blind — either way this run measured nothing
+  // about grants and MUST NOT be read as GREEN.
+  const canaryBlind = report.structural['>']?.state === 'GRANTED';
+  report.verdict = canaryBlind ? 'BROKEN-INSTRUMENT'
+                 : report.faults.length === 0 && biDirectional ? 'PROVEN'
                  : biDirectional ? 'PROVEN-WITH-FAULTS' : 'NOT-PROVEN';
   if (JSON_OUT) console.log(JSON.stringify(report, null, 2));
   else {
     console.log(`wire door-suite — ${DOOR} · kernel ${KERNEL} · tier ${report.tier}`);
+    if (report.instrument?.verdict) console.log(`\nINSTRUMENT: ${report.instrument.verdict}`);
     if (report.benchHealth?.authStorm) console.log(`\n⚠ AUTH-STORM: ~${report.benchHealth.authStorm.failingPerSecond}/s clients failing auth — ${report.benchHealth.authStorm.note}`);
     if (report.benchHealth?.anonymousWireOpen) console.log(`⚠ WIRE OPEN: ${report.benchHealth.anonymousWireOpen.note}`);
     if (report.structuralCaveat) console.log(`\n⚠ ${report.structuralCaveat}`);
@@ -170,5 +217,5 @@ function finish() {
   try { globalThis.dispatcher?.nc?.close?.().catch?.(() => {}); } catch {}
   // fleet exit protocol: 0 GREEN · 44 RED-measured (bi-directional proven but faults/negative
   // findings recorded) · 1 BROKEN (could not prove the axis at all)
-  process.exit(report.verdict === 'PROVEN' ? 0 : report.verdict === 'PROVEN-WITH-FAULTS' ? 44 : 1);
+  process.exit(report.verdict === 'PROVEN' ? 0 : report.verdict === 'PROVEN-WITH-FAULTS' ? 44 : 1);   // BROKEN-INSTRUMENT and NOT-PROVEN both exit 1
 }

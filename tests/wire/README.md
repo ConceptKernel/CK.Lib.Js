@@ -1,92 +1,55 @@
-# Wire gate — bi-directional NATS through a real door
+# tests/wire/ — the three door gates
 
-## The burn kit — three entrypoints, all directable at any door via env
-
-Point them at ANY deployment (a fresh ck-allinone, a new bench, a candidate bundle):
-
-```sh
-export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"   # node ignores the OS keychain
-export CK_DOOR=wss://<host>/wss CK_KERNEL=<rostered-kernel>
-
-node tests/wire/door-confirm.mjs    # 1. ROOT gate (read-only): which LAW runs here?
-                                    #    BINDING: structural digest of the LOADED law, via
-                                    #    surface.grounding through the door (no HTTP needed)
-                                    #    [CK_STRUCT_SHA=… CK_ROOT_SHA=… CK_SHAPES=… CK_ONTOLOGY=…]
-node tests/wire/door-suite.mjs      # 2. OBSERVER (read-only): bench health (auth-storm,
-                                    #    wire-openness), grant surface w/ `>` canary,
-                                    #    bi-directional reply axis  [--json]
-CK_BEAT=1 CK_SUB=<party> \
-node tests/wire/door-beat.mjs       # 3. BURN (DESTRUCTIVE, guarded): the full ladder —
-                                    #    germinate → govern → seal → prove → adopt →
-                                    #    recon pair → wave/lex, three-state honest,
-                                    #    run-id stamped into everything it creates
-```
-
-**One fleet exit protocol** (aligned with pgCK `v312-tdd` and ocig `local-tdd`,
-2026-08-27): **0 = GREEN · 44 = RED-measured (a refusal is a result; negative findings
-recorded honestly) · other = BROKEN (the instrument could not measure — never read as a
-verdict on the door).** Confirm's **three digest planes, never interchanged** (corrected 2026-08-27 — pgCK named
-the red herring: served bytes prove what a deployment SHIPS, never what it ENFORCES;
-"proximity is not adoption", applied to confirmation): **STRUCTURAL** (binding — the loaded
-law, `surface.grounding → structuralDigest`, fleet-portable, wire-native) · **FILE**
-(packaging — OPT-IN only via `CK_ONTOLOGY`; **the kit has NO /ontology dependency** —
-packaging verification belongs in the consumer's build gate, offline against the attested
-artifact) · **COPY** (bench-local, ignored). The composed shape count is deployment-dependent (root + adoptions: 47 with
-wave+lexicon; the 0.4.87 lexicon revision moves it again — a pinned count goes false-RED
-on module updates) and stays informational unless pinned with `CK_SHAPES`.
-
-**The admission matrix** (measured by oci-germination on their artifact, confirmed against
-our §CONNECT rule — the diagonal is the trap, and it is symmetric):
-
-| | no token | valid token |
-|---|---|---|
-| **callout ON** (OIDC) | connects; SUB denied, WRITE denied (on that bundle: NO access — do not assume "subscribe-only") | SUB ok · WRITE seals |
-| **callout OFF** (anon shell) | SUB ok · WRITE seals (id-form claim) | **Authorization Violation at CONNECT** |
-
-One posture per door, never both: `CK_SUB` (claimed) on anon shells; `CK_TOKEN` on OIDC
-benches. Grant scope under a callout is the DEPLOYMENT's policy — measure it with
-door-suite, never assume it. Before diagnosing a dead door: rostered? (silence ≠ refusal) ·
-within ~10s of restart? (warm-up — retry once).
-
-North star (operator, 2026-08-26): mirror pgCK's v3.12 TDD discipline — **structural** and
-**post-structural** — but **over the wire**, measuring what the door *allows* (the grant
-surface) and *communicates* (replies, refusals, sealed events), with the shipped client as the
-instrument. Complements `tests/real-path/` (browser, full form coverage); this suite is node,
-headless, CI-able, and grant-focused.
+**Strategy, tiers, and when each gate is safe to run: [`../README.md`](../README.md).** This
+file is the kit's own reference only.
 
 ```sh
-NODE_EXTRA_CA_CERTS="$HOME/Library/Application Support/mkcert/rootCA.pem" \
-CK_DOOR=wss://pgck.localhost/wss CK_KERNEL=ck-lib-js [CK_TOKEN=<bearer>] \
-node tests/wire/door-suite.mjs [--json]
+export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"
+export CK_DOOR=wss://<host>/wss CK_KERNEL=<rostered-kernel> CK_TOKEN=<your bot bearer>
+
+node door-confirm.mjs                 # gate 1 · LAW      · read-only · safe on production
+node door-suite.mjs [--json]          # gate 2 · GRANTS   · read-only · safe on production
+CK_BEAT=1 node door-beat.mjs          # gate 3 · BURN     · DESTRUCTIVE · breakable benches only
 ```
 
-## Three-state honesty
+**Exit: 0 GREEN · 44 RED-measured · anything else BROKEN.**
 
-| state | meaning | effect on exit |
-|---|---|---|
-| GRANTED / RESULT | the door said yes and answered | — |
-| REFUSED | the door said no, naming it — **a refusal is a result, never a failure** | — |
-| FAULT | no verdict (timeout, transport death) | non-zero |
+## Environment
 
-A **negative control is a pass when it refuses** (bare-name create must refuse; if it seals,
-the run reports FAIL-OPEN loudly). The **`>` canary** guards the instrument itself: a full
-wildcard should refuse, and if it doesn't, every GRANTED in the run is marked *uncertain* —
-either the door is wide open or violation capture is blind. A suite that cannot fail what it
-claims is not a suite.
+| var | gate | required | note |
+|---|---|---|---|
+| `CK_DOOR` | all | **yes** | `wss://<host>/wss`. No default — a door is a wire-meaning value |
+| `CK_KERNEL` | all | **yes** | must be in **this door's** roster, or dispatches are silent |
+| `CK_TOKEN` | all | **yes in practice** | every CK door requires a verified bearer |
+| `CK_STRUCT_SHA` | 1 | no | **no default.** Unpinned ⇒ reports; pinned ⇒ confirms. Per deployment, never per fleet |
+| `CK_SHAPES` | 1 | no | informational unless pinned; deployment-dependent (root + adoptions) |
+| `CK_WAIT_MS` | 2 | no | reply deadline, default 4000 |
+| `CK_BEAT` | 3 | **yes** | must be `1`; the guard is the point |
+| `CK_SUB` | 3 | — | **retired.** `claimSub` is gone: doors grant on the connection's own verified sub |
 
-## Axes
+## What each gate refuses to lie about
 
-- **Structural** — the subject grammar probed subject-by-subject: canonical long forms, the
-  deprecated short forms (expected REFUSED on v3.9+), the error subject, the canary. Run twice
-  (anonymous, then `CK_TOKEN`) and diff: identity-invariance of the grant set is the PASS-9
-  finding as a repeatable measurement.
-- **Post-structural** — bi-directional through the full dispatch path (`input.kernel.<k>.action.*`
-  out, `result.kernel.<k>.>` back, Trace-Id correlated): a typed read, a must-refuse negative
-  control, and — on a granted identity — the sealed-event plane (`event.kernel.<k>.*`).
+- **Gate 1** measures the law the door **loaded** (`surface.grounding → structuralDigest`), not
+  bytes it serves. **Zero HTTP requests** — the kit has no HTTP dependency at all.
+- **Gate 2** carries the `>` canary. If a full wildcard is GRANTED the verdict is
+  **BROKEN-INSTRUMENT**, not PROVEN — either the door is open or capture is blind, and every
+  other GRANTED is then meaningless. Violations are read from `status.permissionContext`
+  (top-level; `status.data` is only the error *code*).
+- **Gate 3** stops climbing when a prerequisite rung faults and reports the rest SKIPPED. It
+  never fabricates a rung it could not reach. Quorum 1 is **rehearsal**, said in the seal.
+
+All three assert **W0 admission** first: `verified` with `sub`/`iss`/`aud` read from the
+connection — never `TOKEN ? 'token-supplied' : …`, which measures an env var, not a door.
+
+## `_`-prefixed files are not gates
+
+`_gov-probe.mjs`, `_ck-ops.mjs` — single-question probes kept for reproduction. The `_` marks
+"not part of any suite, never run by CI, no exit protocol". Promote one to a real gate only by
+giving it a controlled failure.
 
 ## Measured runs
 
-| date | door | tier | verdict |
-|---|---|---|---|
-| 2026-08-26 | wss://pgck.localhost/wss (operator-flagged OUT OF SYNC) | anonymous | NOT-PROVEN — canary GRANTED (grant surface uncertain); dispatch: no reply in 4s, both probes. Honest fault, not a client claim. |
-| 2026-08-26 (later) | wss://pgck.localhost/wss — REBUILT: pgck 0.4.82 + pgrdf 0.6.34, v3.12 FINAL 7de02b35…, virgin substrate; served cklib byte-identical to working tree (6931b425…/aa661514…) | anonymous | NOT-PROVEN — bench-health preflight (new): anonymous wire OPEN (loopback-proven, $SYS visible) and an AUTH-STORM ~7/s (stale-bearer clients; traced by hand to lingering pgck-mcp processes on the operator host holding pre-wipe bearers). Publishes flow; the relay answers neither the read probe nor the negative control on the action grammar. Substrate-side item; the client's publish/subscribe axes are proven, the reply axis is not. |
+| date | door | verdict |
+|---|---|---|
+| 2026-08-26 | pgck.localhost | NOT-PROVEN — canary GRANTED, dispatch silent. **Both symptoms were ours**: the suite read violations from the wrong property (so REFUSED was unreachable) and never passed `gov` (so it published to a kernel id the substrate refuses by name). Recorded then as a substrate item; that attribution was wrong. |
+| 2026-08-28 | pgck.localhost · ck-lib-js · verified | **PROVEN** (exit 0). Canary **REFUSED** · deprecated short forms **REFUSED** · long forms GRANTED · `instance.query` **RESULT** · negative control **REFUSED `type_must_be_iri`** · tier **verified** (measured). Gate 1: `47d24485…`, 30 NodeShapes, LAW CONFIRMED when pinned. |

@@ -12,8 +12,10 @@ const ok = (n, c) => { if (c) { pass++; console.log('  ✅', n); } else { fail++
 const noopSub = { [Symbol.asyncIterator]() { return { next: async () => ({ done: true, value: undefined }) }; }, unsubscribe() {} };
 
 function mkClient(kernel, gov) {
-  const c = new CKClient({ kernel, gov, subscribe: ['result'] });
+  const c = new CKClient({ kernel, gov, wssEndpoint: 'wss://test/wss', subscribe: ['result'] });
   c._maybeRefreshToken = async () => {};                 // no Keycloak in the harness
+  // v1.6.1: dispatch REQUIRES a verified identity (door §2/§4 — id-form is the only publish).
+  c.auth = { anonymous: false, userId: 'test-sub', token: 't', refreshToken: null, claims: { sub: 'test-sub' } };
   const subs = [];
   c.nc = {
     publish: (subject) => {                              // capture subject + resolve the pending dispatch
@@ -32,22 +34,22 @@ console.log('ck-client.js — gov-routing regression (G5a)');
 // A NON-GOV kernel handle (the case that timed out before the fix)
 const k = mkClient('demo-board', 'pgCK');
 const r = await k.dispatch('instance.create', 'ckp://Kernel#demo-board', { type: 'urn:ckp:demo/type/Board' });
-ok('governed create → gov door, not the target kernel', k.__lastSubject === 'input.kernel.pgCK.action.instance.create');
+ok('governed create → gov door, not the target kernel', k.__lastSubject === 'input.kernel.pgck.id.test-sub.action.instance.create');
 ok('governed create resolves (no timeout) → ok+verified', r.ok === true && r.verified === true);
 
 await k.dispatch('instance.query', 'ckp://Kernel#demo-board', {});
-ok('governed query → gov door', k.__lastSubject === 'input.kernel.pgCK.action.instance.query');
+ok('governed query → gov door', k.__lastSubject === 'input.kernel.pgck.id.test-sub.action.instance.query');
 
 await k.dispatch('agent.execute', 'ckp://Kernel#demo-board', {});
-ok('delegated agent.execute → TARGET kernel (the harness), not gov door', k.__lastSubject === 'input.kernel.demo-board.action.agent.execute');
+ok('delegated agent.execute → TARGET kernel (the harness), not gov door', k.__lastSubject === 'input.kernel.demo-board.id.test-sub.action.agent.execute');
 
 k._subscribeAll();
-ok('non-gov handle subscribes the gov reply (result.kernel.pgCK.>)', k.__subs.includes('result.kernel.pgCK.>'));
+ok('non-gov handle subscribes the gov reply (result.kernel.pgck.>)', k.__subs.includes('result.kernel.pgck.>'));
 
 // A GOV-kernel handle: governed verbs ride its own door (no cross-routing)
 const g = mkClient('pgCK', 'pgCK');
 await g.dispatch('instances.count', 'ckp://Kernel#pgCK', {});
-ok('gov-kernel handle: governed verb on its own door', g.__lastSubject === 'input.kernel.pgCK.action.instances.count');
+ok('gov-kernel handle: governed verb on its own door', g.__lastSubject === 'input.kernel.pgck.id.test-sub.action.instances.count');
 
 // ── wire-kernel slug (2026-08-12 — pgCK configured_kernels() drops any '.'-bearing kernel name;
 // CK.Lib.Js and pgCK.MCP measured NOT READY against it). "Lowercase where nothing remembers;
@@ -61,25 +63,25 @@ console.log('ck-client.js — wire-kernel slug (dotted names route; working name
 const dotted = mkClient('CK.Lib.Js', 'pgCK');
 ok('dotted kernel constructs', dotted.kernel === 'CK.Lib.Js');
 ok('_wireKernel is the slug', dotted._wireKernel === 'ck-lib-js');
-ok('topics.input uses the slug', dotted.topics.input === 'input.ck-lib-js');
+ok('topics carry ONLY long forms (R0.1)', dotted.topics.resultLong === 'result.kernel.ck-lib-js.>' && dotted.topics.input === undefined);
 ok('topics.eventLong uses the slug', dotted.topics.eventLong === 'event.kernel.ck-lib-js.>');
 
 await dotted.dispatch('agent.execute', 'ckp://Kernel#CK.Lib.Js', {});
 ok('delegated dispatch on own dotted kernel → slugged subject',
-   dotted.__lastSubject === 'input.kernel.ck-lib-js.action.agent.execute');
+   dotted.__lastSubject === 'input.kernel.ck-lib-js.id.test-sub.action.agent.execute');
 
 // A dotted TARGET (named via kernelUrn, not the client's own kernel) is also slugged.
 const toOther = mkClient('demo-board', 'pgCK');
 await toOther.dispatch('agent.execute', 'ckp://Kernel#pgCK.MCP', {});
 ok('delegated dispatch targeting a dotted kernelUrn → slugged subject',
-   toOther.__lastSubject === 'input.kernel.pgck-mcp.action.agent.execute');
+   toOther.__lastSubject === 'input.kernel.pgck-mcp.id.test-sub.action.agent.execute');
 
 // Regression guard: names that already route MUST NOT be touched — the live pgck.kernels grant
 // and every sealed provenance record reference this exact casing; lowercasing it would silently
 // break the currently-working default path.
 for (const name of ['pgCK', 'Dictionary', 'demo']) {
   const c = mkClient(name, name);
-  ok(`'${name}' passes through unchanged (facts remember this casing)`, c._wireKernel === name && c.topics.input === `input.${name}`);
+  ok(`'${name}' canonicalizes to lowercase (R1.2 — no case survives to the wire)`, c._wireKernel === name.toLowerCase() && c.topics.resultLong === `result.kernel.${name.toLowerCase()}.>`);
 }
 
 // Degenerate case: nothing left after normalization still fails fast, by design.
@@ -119,8 +121,8 @@ const oneMsgSub = (msg) => ({
 const deliver = async (headers) => {
   const c = new CKClient({ kernel: 'pgCK', subscribe: ['event'] });
   c._maybeRefreshToken = async () => {};
-  const msg = { subject: 'event.kernel.pgCK.Task.sealed', headers, data: enc.encode(JSON.stringify({ '@id': 'urn:ckp:demo/task/1', '@type': 'Task' })) };
-  c.nc = { publish() {}, subscribe: (topic) => (topic === 'event.kernel.pgCK.>' ? oneMsgSub(msg) : noopSub) };
+  const msg = { subject: 'event.kernel.pgck.Task.sealed', headers, data: enc.encode(JSON.stringify({ '@id': 'urn:ckp:demo/task/1', '@type': 'Task' })) };
+  c.nc = { publish() {}, subscribe: (topic) => (topic === 'event.kernel.pgck.>' ? oneMsgSub(msg) : noopSub) };
   let got = null; c.on('event', (m) => { got = m; });
   c._subscribeAll();
   await new Promise((r) => setTimeout(r, 15));
@@ -137,23 +139,27 @@ ok('existing envelope fields still present (non-breaking)', !!(withBy && withBy.
 // ── id-scoped dispatch subject (v1.5.6 — #11, pgCK 0.4.24 broker-enforced admittance) ──────────
 console.log('ck-client.js — id-scoped dispatch subject (verified → own id segment)');
 {
-  // anonymous connection → legacy gov subject (seals anonymous; back-compat)
+  // v1.6.1: an unverified connection cannot dispatch AT ALL — the bare form is retired with
+  // the anonymous posture (door §4: id-form is the ONLY publish).
   const a = mkClient('demo-board', 'pgCK');
-  await a.dispatch('instance.create', 'ckp://Kernel#demo-board', { type: 'urn:ckp:demo/type/Board' });
-  ok('anonymous → legacy gov subject', a.__lastSubject === 'input.kernel.pgCK.action.instance.create');
+  a.auth = { anonymous: true, userId: null, token: null, refreshToken: null };
+  let anonThrew = null;
+  try { await a.dispatch('instance.create', 'ckp://Kernel#demo-board', { type: 'urn:ckp:demo/type/Board' }); }
+  catch (e) { anonThrew = e; }
+  ok('unverified dispatch THROWS, naming the door contract', !!anonThrew && /verified/i.test(String(anonThrew.message)));
 
   // verified connection → id-scoped subject built from ITS OWN sub (the broker enforces it)
   const v = mkClient('demo-board', 'pgCK');
   v.auth = { anonymous: false, userId: 'alice', claims: { sub: 'alice' }, token: 't' };
   await v.dispatch('instance.create', 'ckp://Kernel#demo-board', { type: 'urn:ckp:demo/type/Board', sub: 'bob' });
-  ok('verified → id-scoped gov subject from own sub', v.__lastSubject === 'input.kernel.pgCK.id.alice.action.instance.create');
+  ok('verified → id-scoped gov subject from own sub', v.__lastSubject === 'input.kernel.pgck.id.alice.action.instance.create');
   ok('payload identity ignored — never-assert (no "bob" in subject)', !v.__lastSubject.includes('bob'));
 
   // delegated agent.* rides the target kernel — out of gov id-scope
   const d = mkClient('demo-board', 'pgCK');
   d.auth = { anonymous: false, userId: 'alice', claims: { sub: 'alice' }, token: 't' };
   await d.dispatch('agent.execute', 'ckp://Kernel#demo-board', {});
-  ok('delegated agent.* → target kernel, not id-scoped', d.__lastSubject === 'input.kernel.demo-board.action.agent.execute');
+  ok('delegated agent.* → target kernel, id-form (door §4: the only publish)', d.__lastSubject === 'input.kernel.demo-board.id.alice.action.agent.execute');
 }
 
 

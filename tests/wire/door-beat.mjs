@@ -59,14 +59,13 @@ const rung = (id, name, r, expected = null) => {
 };
 const skip = (id, name, why) => { ladder.push({ id, name, outcome: 'SKIPPED', why }); console.log(`  ⏭  ${id} ${name} — ${why}`); };
 
-// v1.5.14: writes ride the id-form subject via claimSub (CLAIMED identity — dev-shell
-// mechanics; on OIDC benches the broker enforces the segment). CONNECT stays credential-less
-// unless CK_TOKEN targets a callout bench.
-const SUB = process.env.CK_SUB || 'bot-ck-lib-js';
-const c = new CKClient({ kernel: KERNEL, gov: KERNEL, wssEndpoint: DOOR, claimSub: SUB,
+// v1.6.1 (R0.8): claimSub is DELETED — every door verifies the bearer, and the id-form
+// segment is the connection's own verified sub. CK_TOKEN is required in practice.
+const c = new CKClient({ kernel: KERNEL, gov: KERNEL, wssEndpoint: DOOR,
   ...(TOKEN ? { tokenProvider: async () => TOKEN } : {}) });
 await c.connect();
-console.log(`door-beat — ${DOOR} · kernel ${KERNEL} · run ${RUN} · claimed sub ${SUB} (${TOKEN ? 'token' : 'anonymous shell'})\n`);
+const _sub = c.auth?.claims?.sub ?? c.auth?.userId ?? 'UNVERIFIED';
+console.log(`door-beat — ${DOOR} · kernel ${KERNEL} · run ${RUN} · verified sub ${String(_sub).slice(0,14)}…\n`);
 const dp = (verb, payload) => Promise.race([
   c.dispatch(verb, `ckp://Kernel#${KERNEL}`, payload),
   new Promise((res) => setTimeout(() => res({ __timeout: true }), WAIT)),

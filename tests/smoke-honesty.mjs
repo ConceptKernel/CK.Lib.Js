@@ -157,36 +157,30 @@ console.log('T-D9 — snake_case stamp shim retired (declared envelope is camelC
 // ── T-D6 (v1.5.14): claimSub — the id-form write path decoupled from connect credentials ─────
 // Wire law (SPEC.pgCK.v3.12-to-CKLIBJS §3): on anonymous shells identity rides the id-form
 // SUBJECT segment, credential-less at CONNECT; on OIDC benches the same subject is broker-
-// enforced. claimSub is the CLAIMED-identity carrier for dev shells — a mechanism, never a
-// certified property, and never sent to the broker's CONNECT.
-console.log('T-D6 — claimSub drives the id-form subject without touching CONNECT');
-{
-  const c = new CKClient({ kernel: 'ck-lib-js', gov: 'ck-lib-js', claimSub: 'bot-ck-lib-js', subscribe: ['result'] });
-  c._maybeRefreshToken = async () => {};
-  c.nc = { publish: (subject) => { c.__lastSubject = subject; const t = [...c._pending.keys()].pop(); if (t) c._resolvePending(t, { ok: true }); },
-           subscribe: () => ({ [Symbol.asyncIterator]() { return { next: async () => ({ done: true }) }; }, unsubscribe() {} }) };
-  await c.dispatch('kernel.germinate', 'ckp://Kernel#ck-lib-js', { project: 'ck-lib-js' });
-  ok('anonymous + claimSub → id-form subject', c.__lastSubject === 'input.kernel.ck-lib-js.id.bot-ck-lib-js.action.kernel.germinate');
-  await c.dispatch('agent.execute', 'ckp://Kernel#ck-lib-js', {});
-  ok('delegated agent.* stays on the bare target subject (unchanged)', c.__lastSubject === 'input.kernel.ck-lib-js.action.agent.execute');
-  ok('claimSub never reaches auth state (no token minted, still anonymous)', c.auth.anonymous === true && c.auth.token === null);
-}
-{
-  const c = new CKClient({ kernel: 'ck-lib-js', gov: 'ck-lib-js', subscribe: ['result'] });
-  c._maybeRefreshToken = async () => {};
-  c.nc = { publish: (subject) => { c.__lastSubject = subject; const t = [...c._pending.keys()].pop(); if (t) c._resolvePending(t, { ok: true }); },
-           subscribe: () => ({ [Symbol.asyncIterator]() { return { next: async () => ({ done: true }) }; }, unsubscribe() {} }) };
-  await c.dispatch('instance.create', 'ckp://Kernel#ck-lib-js', { type: 'urn:x' });
-  ok('no claimSub, anonymous → bare grammar (unchanged default)', c.__lastSubject === 'input.kernel.ck-lib-js.action.instance.create');
-}
-
-// ── T-D7 (v1.5.14): dispatchMode 'v3.9' is retired LOUDLY — ckp.dispatch is dead forever ─────
-console.log('T-D7 — the dead v3.9 ingress refuses at construction, naming its funeral');
+// v1.6.1: claimSub is DELETED (R0.8) — every door verifies the bearer, so a claimed segment
+// is broker-refused by construction. The strict-options guard refuses the key by name.
+console.log('T-D6′ — claimSub is a refused option, not a mechanism');
 {
   let threw = null;
-  try { new CKClient({ kernel: 't', dispatchMode: 'v3.9' }); } catch (e) { threw = e; }
-  ok('constructor throws on dispatchMode v3.9', !!threw);
-  ok('the error teaches (names ckp.dispatch as dead, cites the measurement)', !!threw && /ckp\.dispatch/.test(threw.message) && /dead|never/i.test(threw.message));
+  try { new CKClient({ kernel: 'ck-lib-js', wssEndpoint: 'wss://x/wss', claimSub: 'bot-x' }); } catch (e) { threw = e; }
+  ok('constructor refuses claimSub, naming it', !!threw && /claimSub/.test(String(threw?.message)));
+}
+// v1.6.1: dispatchMode is DELETED entirely (R0.4) — both the v3.8 shim and the v3.9 guard.
+console.log('T-D7′ — dispatchMode is a refused option (the strict guard replaces the funeral)');
+{
+  let threw = null;
+  try { new CKClient({ kernel: 't', wssEndpoint: 'wss://x/wss', dispatchMode: 'v3.9' }); } catch (e) { threw = e; }
+  ok('constructor refuses dispatchMode, naming it', !!threw && /dispatchMode/.test(String(threw?.message)));
+}
+// charter §2/§4: an unverified connection cannot dispatch — the throw names the contract.
+console.log("T-NEW — unverified dispatch throws (id-form is the only publish)");
+{
+  const c = new CKClient({ kernel: 'ck-lib-js', wssEndpoint: 'wss://x/wss', subscribe: ['result'] });
+  c._maybeRefreshToken = async () => {};
+  c.nc = { publish() {}, subscribe: () => ({ [Symbol.asyncIterator]() { return { next: async () => ({ done: true }) }; }, unsubscribe() {} }) };
+  let threw = null;
+  try { await c.dispatch('instance.create', 'ckp://Kernel#ck-lib-js', { type: 'urn:x' }); } catch (e) { threw = e; }
+  ok('throws before any publish, naming the verified-bearer requirement', !!threw && /verified/i.test(String(threw?.message)));
 }
 
 console.log(`\nsmoke-honesty: ${pass} passed, ${fail} failed`);

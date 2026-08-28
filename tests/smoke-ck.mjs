@@ -128,10 +128,14 @@ const k2 = await CK.activate('pgCK.Task', { transport: tpNoTrans });
 const tr2 = await k2.transition('Task#z', 'done');
 ok('transition not-an-affordance → honest ok:false (TE-7 dropped ride-on-update)', tr2.ok === false && !tpNoTrans.calls.some((x) => x.verb === 'instance.update'));
 
+// v1.6.1 (R0.6/R3.1): the v3.8 alias fallback is DELETED — a refused query THROWS with the
+// verdict verbatim, and no second dispatch ever fires. The old test asserted the degrade.
 const tpNoQuery = mockTransport({ noQuery: true });
 const k3 = await CK.activate('pgCK.Task', { transport: tpNoQuery });
-const lq = await k3.query(TASK, {});
-ok('query degrades → instances.list alias (flattened envelope)', lq[0]['@id'] === 'L1' && lq[0].title === 'legacy' && tpNoQuery.calls.some((x) => x.verb === 'instances.list'));
+let qThrew = null;
+try { await k3.query(TASK, {}); } catch (e) { qThrew = e; }
+ok('query refusal THROWS verbatim (no alias fallback, no [])',
+   !!qThrew && qThrew.reply?.error === 'unknown_affordance' && !tpNoQuery.calls.some((x) => x.verb === 'instances.list'));
 
 // governance gated → honest stub
 const g = await k.propose([{ op: 'add_property' }]);

@@ -9,7 +9,7 @@
  *   <script type="module">
  *     const ck = new CKClient({ kernel: 'TechGames' });   // no '.' — see the constructor guard below
  *     await ck.connect();
- *     // subscribed to result + event (both short-form alias AND v3.8 long-form), anonymous ready
+ *     // subscribed to the long-form result + event subjects (door §4: the closed grammar)
  *
  *     ck.send({ action: 'ping' });               // → input.TechGames.Cymatics  (short-form publish)
  *     await ck.login(username, password);         // Keycloak JWT upgrade → RECONNECTS with JWT
@@ -25,19 +25,18 @@
  * Constructor options (v1.3.0+):
  *   kernel            — kernel name (enables auto-subscribe to result/event)
  *   wssEndpoint       — NATS WSS URL
- *   realm, clientId   — Keycloak realm + client_id (no hardcoded default — set explicitly; clientId 'ck-browser')
+ *   realm, clientId   — Keycloak realm + client_id (no hardcoded defaults — set all explicitly)
  *   subscribe         — ['event','result'] (default). Set ['event'] for broadcast-only roles.
  *   extraSubjects     — ['broadcast.<project>.<channel>', ...] — emits on 'broadcast' channel
  *   topicDefs         — caller-supplied topic list (advanced; overrides kernel-derived)
  *   dictVersion       — current local dictionary version (default 0)
  *
- * Design (v1.3 contract per COMPLIANCE):
+ * Design:
  *   - NATS-only data plane. No REST API surface. Auth bootstrap uses Keycloak HTTP only.
  *   - Control attributes in NATS headers; body is pure application data.
  *   - Codec transparent: msg.data is always decoded (JSON v1.2 / MsgPack v1.3); codec on msg.headers.
  *   - Per-subject dedup via Ck-Seq header (graceful: no header → no dedup).
  *   - Dual-subscribe v1.3: receives both short-form (input.<K>) and long-form (input.kernel.<K>.action.<verb>).
- *   - Auto-subscribe to event.kernel.Dictionary.* for internal IRI handle table maintenance.
  *   - Reconnect on auth upgrade (login/logout/token refresh) for consistent permission ACLs.
  */
 
@@ -50,7 +49,7 @@ const DEDUP_MAX_PER_SUBJECT = 1000;
 /**
  * A kernel name's WIRE form — the token NATS actually routes on. Leave alone where facts
  * remember: a name with no '.'/'*'/'>'/whitespace already has a working literal subject (pgCK,
- * Dictionary, demo, ...) — the broker's grant and every sealed provenance record reference that
+ * demo, ...) — the broker's grant and every sealed provenance record reference that
  * exact casing, so it passes through untouched. Lowercase where nothing remembers: a dotted name
  * (CK.Lib.Js, pgCK.MCP) has NO working literal form — pgCK's configured_kernels() drops any
  * '.'-bearing token unconditionally, so nothing has ever routed successfully under the raw name —
@@ -60,13 +59,34 @@ const DEDUP_MAX_PER_SUBJECT = 1000;
  */
 function slugKernel(name) {
     if (!name) return name;
-    if (!/[.*>\s]/.test(name)) return name;   // already routable — the exact form facts remember
-    return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    // v1.6.1 (R1.2): lowercase UNCONDITIONALLY. The old early-return skipped case handling for
+    // undotted names, so the one hardcoded uppercase default was the one name it could not fix —
+    // and NATS subject tokens have no case folding, so an uppercase twin is a separate kernel
+    // nothing can seal into (the substrate's own refusal text). Canonical form: ^[a-z0-9]+(-[a-z0-9]+)*$.
+    return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
 }
+
+const KNOWN_OPTIONS = new Set([
+    'kernel', 'gov', 'wssEndpoint', 'authenticator', 'tokenProvider', 'authEndpoint',
+    'realm', 'clientId', 'maxReconnectAttempts', 'reconnectDelay', 'subscribe',
+    'extraSubjects', 'dispatchTimeout',
+]);
 
 class CKClient {
     constructor(config = {}) {
-        this.kernel = config.kernel || null;
+        // v1.6.1 (R0.4/R0.5, charter §3): STRICT options. An unknown key throws, naming it —
+        // stronger than any per-key guard: it catches every typo AND every retired option
+        // without carrying a single retired name in the file.
+        for (const k of Object.keys(config)) {
+            if (!KNOWN_OPTIONS.has(k)) throw new Error(
+                `CKClient: unknown option '${k}'. Known: ${[...KNOWN_OPTIONS].join(', ')}. ` +
+                `Retired options (v1.6.1 purge) are refused rather than ignored.`);
+        }
+        // charter §3: a kernel is a wire-meaning value — REQUIRED, no default, thrown before any I/O.
+        if (!config.kernel) throw new Error(
+            "CKClient: `kernel` is required and has no default — it selects every subject this " +
+            "client touches. Pass the kernel this connection operates as.");
+        this.kernel = config.kernel;
 
         // The wire form (see slugKernel above) — used for every NATS subject built below and in
         // dispatch(). `this.kernel` itself stays raw/dotted: it's what callers named, what shows
@@ -97,8 +117,9 @@ class CKClient {
             tokenProvider: config.tokenProvider || null,   // #14 Mode A — app-owned token, forwarded
             authEndpoint: config.authEndpoint || (_loc ? `${_loc.protocol}//${_loc.host}` : null),
             realm: config.realm || null,
-            clientId: config.clientId || 'ck-browser',
-            stateEndpoint: config.stateEndpoint || '/api/state',
+            // v1.6.1 (R0.5): no defaulted clientId — the old default was the realm's wide-open
+            // client. login() requires it explicitly.
+            clientId: config.clientId || null,
             maxReconnectAttempts: config.maxReconnectAttempts || 10,
             reconnectDelay: config.reconnectDelay || 1000,
         };
@@ -109,39 +130,15 @@ class CKClient {
         // Extra non-kernel-derived subjects (v1.3) — emit on 'broadcast'
         this._extraSubjects = config.extraSubjects || [];
 
-        // Per-kernel topic derivation. v1.3 carries BOTH forms:
-        //   short = input.<K> (v1.2 alias, deprecated, removed in v2.0)
-        //   long  = input.kernel.<K>.action.<verb> (v3.8 canonical)
+        // v1.6.1 (R0.1, door §4): the subject grammar is CLOSED and long-form only. The
+        // pre-v3.11 short forms (result.<k>, event.<k>, input.<k>) are refused by every scoped
+        // door — measured: three refused subscriptions per connect, invisible until the O-1 fix.
         const wk = this._wireKernel;
         this.topics = wk ? {
-            input:           `input.${wk}`,                                  // short publish
-            inputLongPrefix: `input.kernel.${wk}.action.`,                   // long publish (append verb)
-            result:          `result.${wk}`,                                 // short subscribe
-            resultLong:      `result.kernel.${wk}.>`,                        // long subscribe wildcard (grammar-agnostic: catches result.kernel.<K>.<verb> AND .action.<verb>; Trace-Id correlates — mirrors eventLong breadth)
-            event:           `event.${wk}`,                                  // short subscribe
-            eventLong:       `event.kernel.${wk}.>`,                         // long subscribe wildcard
-            error:           `event.kernel.${wk}.error`,                     // per-kernel error (v1.3)
+            resultLong: `result.kernel.${wk}.>`,        // replies — PUBLISHED, never an inbox
+            eventLong:  `event.kernel.${wk}.>`,         // sealed events
+            error:      `event.kernel.${wk}.error`,     // per-kernel error channel
         } : null;
-
-        // Allow advanced callers to override completely
-        if (config.topicDefs) this.topicDefs = config.topicDefs;
-        else this.topicDefs = wk ? [
-            { name: `input.${wk}`,                       dir: 'pub', access: 'anon' },
-            { name: `input.kernel.${wk}.action.>`,       dir: 'pub', access: 'anon' },
-            { name: `result.${wk}`,                      dir: 'sub', access: 'anon' },
-            { name: `result.kernel.${wk}.>`,             dir: 'sub', access: 'anon' },
-            { name: `event.${wk}`,                       dir: 'sub', access: 'anon' },
-            { name: `event.kernel.${wk}.>`,              dir: 'sub', access: 'anon' },
-            { name: `admin.${wk}`,                       dir: 'pub', access: 'auth' },
-            { name: `metrics.${wk}`,                     dir: 'sub', access: 'auth' },
-        ] : [];
-
-        // v1.3 dictionary state (per-project IRI handle table). Maintained internally.
-        this._dict = {
-            version: config.dictVersion || 0,
-            handles: new Map(),   // handle (int) → iri (string)
-            reverse: new Map(),   // iri (string) → handle (int)
-        };
 
         // v1.3 per-subject dedup state (Ck-Seq header)
         this._seenSeqs = new Map();   // subject → Set<seq>
@@ -153,36 +150,29 @@ class CKClient {
         this.auth = { anonymous: true, userId: null, token: null, refreshToken: null };
 
         this._handlers = {
-            result: [], event: [], status: [], error: [], broadcast: [],
+            result: [], event: [], status: [], error: [], broadcast: [], late: [],
         };
+        // v1.6.1 (R6.4 / A-13): ring buffer of timed-out dispatches, so the reply that arrives
+        // AFTER its timeout is emitted as 'late' — an observation, never an auto-retry. Only the
+        // published-reply model makes this possible; an inbox client could not see it at all.
+        this._expired = new Map();          // traceId → { verb, at }
+        // v1.6.1 (R6.5 / A-14): per-subject subscription health. A refused subscription dies
+        // alone while others flow — this map is what makes that visible. States: 'subscribed'
+        // (grant not refused — NOT proof of liveness; granted-and-idle is indistinguishable,
+        // Q-6 stands) · 'refused' (broker said no).
+        this._subjectHealth = new Map();    // subject → { scope, state }
 
         // v1.5.0 dispatch-transport state (additive over the v1.3 NATS client).
         this._pending = new Map();          // traceId → { resolve, reject, timer } (request/reply correlation)
         this._scopeListeners = new Set();   // fn(instance|reply) — granted-scope delivery for subscribe()
-        // v1.5.14 (T-D7): dispatchMode 'v3.9' is RETIRED. `ckp.dispatch` is dead on the substrate —
-        // broker-certified no-responders (A8, 2026-08-26) and pgCK's own ruling: "nothing has ever
-        // subscribed it; it will never answer" (SPEC.pgCK.v3.12-to-CKLIBJS §2.2). Refusing loudly at
-        // construction beats a guaranteed timeout at first dispatch.
-        if (config.dispatchMode === 'v3.9') {
-            throw new Error(
-                "CKClient: dispatchMode 'v3.9' (the ckp.dispatch closed ingress) is retired — " +
-                "nothing has ever subscribed ckp.dispatch on the substrate and it will never answer " +
-                "(measured: broker-certified no-responders, 2026-08-26; ruled dead by pgCK). " +
-                "Use the default subject grammar; writes ride the id-form segment.");
-        }
-        this._dispatchMode = config.dispatchMode || 'v3.8';      // v3.8 subject-grammar shim until pgCK CI-B
         this._dispatchTimeout = config.dispatchTimeout || 15000;
-        // v1.5.14 (T-D6): CLAIMED identity for the id-form write path on anonymous shells.
-        // Wire law (SPEC.pgCK.v3.12-to-CKLIBJS §3): identity rides the id-form SUBJECT segment,
-        // credential-less at CONNECT — a no-callout broker REFUSES presented bearers outright, so
-        // the claim must never touch auth/CONNECT state. On OIDC benches the callout enforces the
-        // segment against the connection's own sub, and a mismatched claim is refused by the broker.
-        // CLAIMED ≠ VERIFIED: this is a mechanism for dev benches, never a certified property.
-        this._claimSub = config.claimSub || null;
-        // Governance door: governed verbs (instance.*/kernel.*/instances.*/affordances/concept.match) are
-        // answered HERE (input.kernel.<gov>.action.<verb> → result.kernel.<gov>.<verb>), not on the target
-        // kernel's subject. Only DELEGATED agent.* verbs ride the target kernel (the harness). Mirrors ck-bus.
-        this._gov = config.gov || 'pgCK';
+        // Governance door: governed verbs (instance.*/kernel.*/concept.match/surface.*) are answered
+        // HERE (input.kernel.<gov>.…action.<verb> → result.kernel.<gov>.<verb>), not on the target
+        // kernel's subject. Only DELEGATED agent.* verbs ride the target kernel.
+        // v1.6.1 (R1.1, M-1): gov DERIVES from the activated kernel — never a literal. The old
+        // default was an uppercase kernel id the substrate refuses BY NAME (P0001, not canonical):
+        // loud on wildcard doors, silent on scoped ones. No wire-meaning defaults, ever.
+        this._gov = slugKernel(config.gov || this.kernel) || null;
     }
 
     // ── Public API ───────────────────────────────────────────────────────
@@ -196,6 +186,17 @@ class CKClient {
             this.nc = await this._openConnection();
             this._watchConnection();
             this._setConnection('connected');
+            // v1.6.1 (R0.9, charter §4): there is NO anonymous tier. A door that admits an
+            // unverified connection is NON-CONFORMANT (CK-DOOR v1.6.1 §2/§3) — say so at once
+            // instead of proceeding to measure grants that mean nothing. No flag, no opt-out.
+            if (this.auth.anonymous) {
+                try { await this.nc?.close?.(); } catch {}
+                this._setConnection('disconnected');
+                throw new Error(
+                    'CKClient.connect: admitted WITHOUT a verified identity — this door is ' +
+                    'non-conformant (every CK door requires a verified bearer). Pass a tokenProvider; ' +
+                    'if one was passed, the bearer was not verified and this is a door defect.');
+            }
             this._subscribeAll();
             return true;
         } catch (e) {
@@ -209,28 +210,9 @@ class CKClient {
      * if data.action is present, also publishes on long-form input.kernel.<K>.action.<verb>.
      * Returns the generated traceId.
      */
-    async send(data) {
-        if (!this.nc) throw new Error('Not connected');
-        if (!this.topics) throw new Error('No kernel configured');
-        await this._maybeRefreshToken();
-        const traceId = this._traceId();
-        const h = this._headers(traceId);
-        const jc = nats.JSONCodec();
-        const body = { timestamp: new Date().toISOString(), ...data };
-        const encoded = jc.encode(body);
-        // Short-form (deprecated, removed v2.0)
-        this.nc.publish(this.topics.input, encoded, { headers: h });
-        // Long-form (canonical v3.8) — only when caller provided an action verb
-        if (data && data.action) {
-            const longTopic = this.topics.inputLongPrefix + String(data.action);
-            this.nc.publish(longTopic, encoded, { headers: h });
-        }
-        return traceId;
-    }
-
     /** Keycloak login → upgrade anonymous to authenticated → RECONNECT with JWT (v1.3 locked). */
     async login(username, password) {
-        if (!this.config.authEndpoint || !this.config.realm) throw new Error("CKClient.login: `authEndpoint` and `realm` are required — pass them explicitly (no hardcoded default).");
+        if (!this.config.authEndpoint || !this.config.realm || !this.config.clientId) throw new Error("CKClient.login: `authEndpoint`, `realm` and `clientId` are required — pass them explicitly (no hardcoded default).");
         const url = `${this.config.authEndpoint}/realms/${this.config.realm}/protocol/openid-connect/token`;
         const res = await fetch(url, {
             method: 'POST',
@@ -271,30 +253,6 @@ class CKClient {
         this._setConnection('disconnected');
     }
 
-    /** Save state to filer by logical key. */
-    saveState(key, data, { keepalive = false } = {}) {
-        const url = `${this.config.stateEndpoint}/${key}.json`;
-        const opts = {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-            keepalive,
-        };
-        if (this.auth.token) opts.headers['Authorization'] = `Bearer ${this.auth.token}`;
-        return fetch(url, opts);
-    }
-
-    /** Load state from filer by logical key. */
-    async loadState(key) {
-        await this._maybeRefreshToken();
-        const url = `${this.config.stateEndpoint}/${key}.json`;
-        const h = {};
-        if (this.auth.token) h['Authorization'] = `Bearer ${this.auth.token}`;
-        const res = await fetch(url, { headers: h });
-        if (!res.ok) return null;
-        return res.json();
-    }
-
     /** Subscribe to events: 'result', 'event', 'status', 'error', 'broadcast'. */
     on(event, fn) { if (this._handlers[event]) this._handlers[event].push(fn); }
     off(event, fn) {
@@ -307,8 +265,6 @@ class CKClient {
     /**
      * The single outbound primitive: carry the four-tuple ⟨verb, kernel_urn, payload, identity⟩ to
      * pgCK and await the typed reply. Identity is the verified JWT the connection already carries — the
-     * client never asserts it. Against a pre-CI-B pgCK the transitional `v3.8` shim maps the verb to its
-     * per-verb subject; switch `dispatchMode:'v3.9'` once pgCK presents `ckp.dispatch` natively.
      */
     async dispatch(verb, kernelUrn, payload = {}, opts = {}) {
         if (!this.nc) throw new Error('Not connected');
@@ -319,32 +275,29 @@ class CKClient {
         if (kernelUrn) h.set('Ck-Kernel', String(kernelUrn));
         const jc = nats.JSONCodec();
 
-        let subject, body;
-        if (this._dispatchMode === 'v3.9') {
-            subject = this._dispatchIngress;                   // ckp.dispatch closed ingress
-            body = { verb, kernel_urn: kernelUrn, payload };   // identity is server-derived (TR-02)
-        } else {
-            const target = (kernelUrn || '').replace('ckp://Kernel#', '') || this.kernel;
-            // Governed verbs are answered on the GOV door; only delegated agent.* verbs ride the target
-            // kernel's subject (the harness). The target kernel travels in the Ck-Kernel header (set above).
-            const delegated = /^agent\./.test(verb) || verb === 'execute' || verb === 'presence' || verb === 'say';
-            const routeKernel = slugKernel(delegated ? target : this._gov);
-            // v1.5.6 (#11): a VERIFIED connection publishes governed dispatches on the broker-enforced
-            // id-scoped segment so the seal records the real created_by / the event carries the true `by:`.
-            // NOT identity assertion — the broker permits ONLY the connection's own id (surfaced from its
-            // verified token via this.auth); a forged segment is denied and never seals. Anonymous
-            // connections and delegated agent.* verbs use the legacy subject (anonymous seal; back-compat).
-            const idSub = (!delegated && ((!this.auth.anonymous && (this.auth.claims?.sub ?? this.auth.userId)) || this._claimSub)) || null;
-            subject = idSub
-                ? `input.kernel.${routeKernel}.id.${idSub}.action.${verb}`
-                : `input.kernel.${routeKernel}.action.${verb}`;   // v3.8 subject-grammar shim (removed at CI-B)
-            body = { action: verb, ...payload };
-        }
+        // door §4: exactly ONE legal publish form — input.kernel.<gov>.id.<sub>.action.<verb>.
+        // The unidentified bare form is RETIRED with the anonymous posture: every conformant door
+        // verifies the bearer, so the connection always has a sub, and a forged segment is
+        // broker-refused. Governed verbs ride the GOV kernel; only delegated agent.* verbs ride
+        // the target (which travels in the Ck-Kernel header either way).
+        const target = String(kernelUrn || '').replace('ckp://Kernel#', '') || this.kernel;
+        const delegated = /^agent\./.test(verb) || verb === 'execute' || verb === 'presence' || verb === 'say';
+        const routeKernel = slugKernel(delegated ? target : this._gov);
+        const idSub = (!this.auth.anonymous && (this.auth.claims?.sub ?? this.auth.userId)) || null;
+        if (!idSub) throw new Error(
+            `dispatch('${verb}'): no verified identity on this connection. Every CK door requires ` +
+            "a verified bearer (CK-DOOR v1.6.1 §2); an admitted-unverified connection is a " +
+            "non-conformant door, not a tier to operate in.");
+        const subject = `input.kernel.${routeKernel}.id.${idSub}.action.${verb}`;
+        const body = { action: verb, ...payload };
 
         return new Promise((resolve, reject) => {
             const timeout = opts.timeout || this._dispatchTimeout;
             const timer = setTimeout(() => {
                 this._pending.delete(traceId);
+                // R6.4: remember the timeout so the late answer is recognizable when it lands.
+                this._expired.set(traceId, { verb, at: Date.now() });
+                if (this._expired.size > 64) this._expired.delete(this._expired.keys().next().value);
                 reject(new Error(`dispatch('${verb}') timed out after ${timeout}ms`));
             }, timeout);
             // v1.5.9 (#19): store subject+verb so a broker permission violation on this subject can
@@ -358,9 +311,12 @@ class CKClient {
         });
     }
 
-    _resolvePending(traceId, reply) {
+    _resolvePending(traceId, reply, meta = null) {
         const p = this._pending.get(traceId);
         if (!p) return;
+        // door §5.2: id AND verb must agree before a published reply resolves a pending dispatch.
+        // A collision that resolves a mismatched verb is a silently wrong answer, not a fault.
+        if (meta && meta.verb && p.verb && meta.verb !== p.verb) return;
         clearTimeout(p.timer);
         this._pending.delete(traceId);
         p.resolve(reply);
@@ -385,11 +341,8 @@ class CKClient {
     async close() { return this.disconnect(); }
 
     /** v1.3 — lookup dictionary handle for an IRI (returns null if unknown). */
-    handleForIri(iri) { return this._dict.reverse.get(iri) ?? null; }
     /** v1.3 — lookup IRI for a dictionary handle (returns null if unknown). */
-    iriForHandle(handle) { return this._dict.handles.get(handle) ?? null; }
     /** v1.3 — current local dictionary version. */
-    get dictVersion() { return this._dict.version; }
 
     // ── Convenience getters ──────────────────────────────────────────────
 
@@ -428,9 +381,7 @@ class CKClient {
             servers: this.config.wssEndpoint,
             maxReconnectAttempts: this.config.maxReconnectAttempts,
             reconnectTimeWait: this.config.reconnectDelay,
-            // v1.3: embed dictionary version + browser identity in CONNECT `name` field
-            // (NATS Core lacks structured CONNECT extensions; pgCK parses `name` server-side)
-            name: `ck-browser;dict-v=${this._dict.version};client=${this._clientId}`,
+            name: `cklib;client=${this._clientId}`,
         };
         if (this.config.authenticator) connectOpts.authenticator = this.config.authenticator;
         if (this.auth.token) connectOpts.token = this.auth.token;
@@ -451,31 +402,18 @@ class CKClient {
 
     _subscribeAll() {
         if (!this.topics) {
-            // No kernel — still process extraSubjects
             for (const subject of this._extraSubjects) this._sub(subject, 'broadcast');
             return;
         }
-
-        // result channel (short + long forms)
+        // door §4: subscribe set = the three long forms, nothing else. (R0.1 deleted the
+        // pre-v3.11 short forms; R0.2 deleted the foreign-kernel Dictionary subscription.)
         if (this._subscribeChannels.includes('result')) {
-            this._sub(this.topics.result,     'result');
             this._sub(this.topics.resultLong, 'result');
-            // Governed-verb replies arrive on the gov door's result subject — subscribe it when the
-            // activated kernel isn't the gov kernel, so instance.*/kernel.* dispatches correlate (G5a).
-            if (this._gov && this._gov !== this.kernel) this._sub(`result.kernel.${slugKernel(this._gov)}.>`, 'result');
+            // Governed replies arrive on the GOV kernel's result subject when it differs (G5a).
+            if (this._gov && this._gov !== slugKernel(this.kernel)) this._sub(`result.kernel.${this._gov}.>`, 'result');
         }
-        // event channel (short + long forms)
-        if (this._subscribeChannels.includes('event')) {
-            this._sub(this.topics.event,     'event');
-            this._sub(this.topics.eventLong, 'event');
-        }
-        // error channel (always auto-subscribed when kernel is set; v1.3 §3 locked)
+        if (this._subscribeChannels.includes('event')) this._sub(this.topics.eventLong, 'event');
         this._sub(this.topics.error, 'error');
-
-        // Dictionary subjects — internal handling, no user-facing emit
-        this._subDict();
-
-        // Extra subjects (broadcast.<project>.<channel> etc.)
         for (const subject of this._extraSubjects) this._sub(subject, 'broadcast');
     }
 
@@ -532,7 +470,19 @@ class CKClient {
                         this._deriveEnvelope(eventName, msg.subject, data);
 
                     // v1.5.0 — resolve a pending dispatch by Trace-Id; deliver granted-scope to subscribe() listeners.
-                    if (eventName === 'result' && traceId && this._pending.has(traceId)) this._resolvePending(traceId, data);
+                    if (eventName === 'result' && traceId && this._pending.has(traceId)) {
+                        // door §5.2: the verb for correlation is the FULL subject suffix after
+                        // result.kernel.<k>. (multi-segment verbs like surface.grounding), never the
+                        // envelope's display verb (last segment only — 'grounding' ≠ 'surface.grounding').
+                        const m = /^result\.kernel\.[^.]+\.(?:action\.)?(.+)$/.exec(msg.subject);
+                        this._resolvePending(traceId, data, { verb: m ? m[1] : null, subject: msg.subject });
+                    }
+                    // R6.4: the late answer to a write you were told had no verdict — say so.
+                    if (eventName === 'result' && traceId && this._expired.has(traceId)) {
+                        const ex = this._expired.get(traceId); this._expired.delete(traceId);
+                        this._emit('late', { subject: msg.subject, data, traceId, verb: ex.verb, by, seq,
+                                             note: 'reply arrived after its dispatch timed out — query-then-decide is now a signal' });
+                    }
                     if (eventName === 'result' || eventName === 'event') {
                         for (const fn of this._scopeListeners) { try { fn(data); } catch (e) {} }
                     }
@@ -605,7 +555,7 @@ class CKClient {
     /** The ONE place a subscription is created. `_sub` and `_subDict` both route through it so the
      *  #17 fault isolation cannot drift apart again — which is exactly how it broke: #17 hardened
      *  every user-facing subject in `_sub` and MISSED `_subDict`, which carried its own copy of the
-     *  raw subscribe + bare async IIFE. That one internal subject is `event.kernel.Dictionary.>`,
+     *  raw subscribe + bare async IIFE. That one internal subject was a foreign-kernel feed,
      *  which an anonymous grant does not cover, so the single un-guarded path was also the first
      *  one every anonymous client hits — an unhandled rejection on connect, taking the whole client
      *  down, which is precisely what #17 exists to prevent. Two copies of a guard is one guard.
@@ -615,10 +565,12 @@ class CKClient {
         try {
             sub = this.nc.subscribe(subject);
         } catch (e) {
+            this._subjectHealth.set(subject, { scope, state: 'refused' });
             this._emit('error', { kind: 'error', scope: 'subscribe', subject, error: String(e?.message || e),
                                   note: 'subject refused at subscribe; other subjects unaffected' });
             return null;
         }
+        this._subjectHealth.set(subject, { scope, state: 'subscribed' });
         this._subs.push(sub);
         (async () => { for await (const msg of sub) onMsg(msg); })().catch((e) => {
             this._emit('error', { kind: 'error', scope, subject, error: String(e?.message || e),
@@ -627,37 +579,10 @@ class CKClient {
         return sub;
     }
 
-    _subDict() {
-        const subject = 'event.kernel.Dictionary.>';
-        const jc = nats.JSONCodec();
-        this._guardedSubscribe(subject, 'dictionary', (msg) => {
-            {
-                try {
-                    const data = jc.decode(msg.data);
-                    if (msg.subject.endsWith('.v_bumped')) {
-                        // { from, to, delta: [{handle, iri}, ...] }
-                        if (data.from === this._dict.version) {
-                            for (const { handle, iri } of (data.delta || [])) {
-                                this._dict.handles.set(handle, iri);
-                                this._dict.reverse.set(iri, handle);
-                            }
-                            this._dict.version = data.to;
-                        }
-                        // Out-of-sync deltas are silently dropped; server resends snapshot on next CONNECT.
-                    } else if (msg.subject.endsWith('.snapshot')) {
-                        // { version, entries: [{handle, iri}, ...] }
-                        this._dict.handles.clear();
-                        this._dict.reverse.clear();
-                        for (const { handle, iri } of (data.entries || [])) {
-                            this._dict.handles.set(handle, iri);
-                            this._dict.reverse.set(iri, handle);
-                        }
-                        this._dict.version = data.version;
-                    }
-                    // Intentionally do NOT emit on 'event' — dictionary is internal infrastructure.
-                } catch (e) { console.error('[CKClient] dict decode error:', e); }
-            }
-        });
+    /** v1.6.1 (R6.5/R6.6): per-subject health, DIAGNOSTIC — the only place subjects surface.
+     *  'subscribed' ≠ live (granted-and-idle is indistinguishable — Q-6); 'refused' is measured. */
+    subjects() {
+        return [...this._subjectHealth.entries()].map(([subject, v]) => ({ subject, ...v }));
     }
 
     _isSeen(subject, seq) {
@@ -782,6 +707,10 @@ class CKClient {
             if (m) { subject = m[1]; op = /sub/i.test(msg) ? 'sub' : 'pub'; }
         }
         // (1) Always surface — a refusal is never silent.
+        if (subject && (op === 'subscription' || /sub/i.test(String(op || '')))) {
+            const h = this._subjectHealth.get(subject);
+            this._subjectHealth.set(subject, { scope: h?.scope ?? 'unknown', state: 'refused' });
+        }
         this._emit('error', { kind: 'error', scope: 'protocol', op: op || null, subject: subject || null, error: msg });
         // (2) Fail-fast any dispatch whose publish subject the broker just refused.
         if (subject) {
@@ -821,7 +750,10 @@ class CKClient {
     }
 
     _id() { return 'xxxx-xxxx-xxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16)); }
-    _traceId() { return 'tx-' + 'xxxxxx'.replace(/x/g, () => Math.floor(Math.random() * 16).toString(16)); }
+    // v1.6.1 (R3.7 / A-11, door §5): replies are PUBLISHED to every subscriber, so correlation
+    // ids must be >=128-bit (24-bit collided at 8,036 dispatches, measured) AND a reply resolves
+    // a pending dispatch only when id + verb agree — entropy alone cannot close a cross-resolve.
+    _traceId() { return 'tx-' + (globalThis.crypto?.randomUUID?.() ?? Array.from({length:32},()=>Math.floor(Math.random()*16).toString(16)).join('')); }
     _parseJwt(t) { try { return JSON.parse(atob(t.split('.')[1].replace(/-/g, '+').replace(/_/g, '/'))); } catch (e) { return null; } }
 }
 

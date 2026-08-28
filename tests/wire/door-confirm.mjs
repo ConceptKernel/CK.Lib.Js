@@ -1,70 +1,77 @@
-// tests/wire/door-confirm.mjs — the ROOT gate: confirm what LAW a door actually runs.
-// Non-destructive. Corrected 2026-08-27 after pgCK named the red herring: fetching the served
-// ontology file proves what a deployment SHIPS, never what it ENFORCES — boot() reads a path
-// once; re-grounding never touches the served file. "Proximity is not adoption", applied to
-// confirmation. The BINDING criterion is therefore the STRUCTURAL DIGEST of the loaded law,
-// read through the door itself: surface.grounding {iri:'urn:ckp:core'} → structuralDigest —
-// reload-surviving, blank-node-immune, fleet-portable (re-measured here: 6e38f7bb… on 0.4.87,
-// byte-identical to pgCK's s65 pin). The FILE half stays as a PACKAGING check (what ships
-// beside the door — ocig's plane), informational for law-confirmation purposes. The copy
-// digest is bench-local and ignored, as ever. Three planes, never interchanged.
+// tests/wire/door-confirm.mjs — GATE 1, the ROOT gate: which LAW does this door enforce?
+// Read-only. Non-destructive. Safe on any door, including production.
 //
-//   NODE_EXTRA_CA_CERTS=... CK_DOOR=wss://<door>/wss CK_KERNEL=<rostered-kernel> \
-//   [CK_STRUCT_SHA=6e38f7bb…] [CK_ROOT_SHA=7de02b35…] [CK_SHAPES=<n>] \
-//   [CK_ONTOLOGY=/ontology/v3.12/core.ttl] node tests/wire/door-confirm.mjs
+// WIRE-NATIVE, WITH NO HTTP AT ALL (v1.6.1). The kit makes zero HTTP requests: law
+// confirmation reads `surface.grounding → structuralDigest` through /wss, which is the
+// digest of the LAW THE DOOR ACTUALLY LOADED. Served bytes prove what a deployment SHIPS,
+// never what it ENFORCES — "proximity is not adoption" — so packaging verification belongs
+// in the consumer's build gate, offline, against the attested artifact. It is not this kit's
+// job and never was. (The former CK_ONTOLOGY packaging half is removed, not disabled.)
 //
-// Fleet exit protocol: 0 LAW CONFIRMED · 44 LAW NOT CONFIRMED (measured — the door enforces
-// a different root) · 1 could not measure (instrument/transport fault — never a verdict).
-// Shape count: informational unless pinned (deployment-dependent — root + adoptions).
-// LESSON kept: hash NOTHING without checking res.ok (the 404-body incident).
+// NO DEFAULT DIGEST. A law pin is a PER-DEPLOYMENT declaration, never a kit constant: fleet
+// benches legitimately run different law (an artifact-pinned bench boots its artifact's law).
+// A baked-in constant is guaranteed to go false-RED on a correctly-pinned door. Unpinned, this
+// gate REPORTS what it measured; pinned via CK_STRUCT_SHA, it CONFIRMS.
+//
+// Run:  export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"
+//       CK_DOOR=wss://<host>/wss CK_KERNEL=<rostered-kernel> CK_TOKEN=<bearer> \
+//       [CK_STRUCT_SHA=<64-hex>] [CK_SHAPES=<n>] node tests/wire/door-confirm.mjs
+//
+// Exit: 0 CONFIRMED (or measured, when unpinned) · 44 NOT CONFIRMED (measured mismatch)
+//       1 COULD NOT MEASURE (instrument/transport fault — never a verdict on the door)
 import CKClient from '../../ck-client.js';
-import { createHash } from 'node:crypto';
 
-const DOOR    = process.env.CK_DOOR       || 'wss://pgck.localhost/wss';
-const KERNEL  = process.env.CK_KERNEL     || 'ck-lib-js';
-const STRUCT  = process.env.CK_STRUCT_SHA || '6e38f7bb631875b4fcacb086219d862bbe08cfc7209ee9c96967222e9c0225a7'; // v3.12 FINAL core, loaded-law plane
-const ROOT    = process.env.CK_ROOT_SHA   || '7de02b35fd1fbc2ecfd32e6e53162704be2791a2d41280102849ddb605eb9297'; // file plane (packaging)
-const SHAPES  = process.env.CK_SHAPES ? Number(process.env.CK_SHAPES) : null;
-const TTLPATH = process.env.CK_ONTOLOGY   || null;   // OPT-IN ONLY (2026-08-27, operator ruling):
-// the /ontology HTTP mapping is NOT a dependency of this kit or the client. Law confirmation
-// is fully wire-native; packaging verification belongs in the consumer's build gate, offline,
-// against the attested artifact. Set CK_ONTOLOGY only if you deliberately want the extra
-// served-bytes report from a door that happens to serve its tree.
-const ORIGIN  = 'https://' + new URL(DOOR).host;
+const DOOR   = process.env.CK_DOOR;
+const KERNEL = process.env.CK_KERNEL;
+const TOKEN  = process.env.CK_TOKEN || null;
+const STRUCT = process.env.CK_STRUCT_SHA || null;          // no default — see header
+const SHAPES = process.env.CK_SHAPES ? Number(process.env.CK_SHAPES) : null;
 
-// ── LAW half (BINDING): the structural digest of what the door actually enforces ─────────────
-const c = new CKClient({ kernel: KERNEL, gov: KERNEL, wssEndpoint: DOOR });
+// Charter §3: no default carries wire meaning. Absent required value ⇒ throw locally, named.
+for (const [k, v] of Object.entries({ CK_DOOR: DOOR, CK_KERNEL: KERNEL })) {
+  if (!v) { console.error(`door-confirm: ${k} is required and has no default (a door and a kernel are wire-meaning values).`); process.exit(1); }
+}
+
+const c = new CKClient({ kernel: KERNEL, gov: KERNEL, wssEndpoint: DOOR,
+                         ...(TOKEN ? { tokenProvider: async () => TOKEN } : {}) });
 let structural = null, wireShapes = null;
 try {
   await c.connect();
-  const g = await c.dispatch('surface.grounding', `ckp://Kernel#${KERNEL}`, { iri: 'urn:ckp:core' }, { timeout: 10000 });
-  const core = (g?.graphs || []).find((x) => x.iri === 'urn:ckp:core') || g?.graphs?.[0];
-  structural = core?.structuralDigest ?? null; wireShapes = core?.nodeshapes ?? null;
-  console.log(`LAW   surface.grounding urn:ckp:core → structuralDigest ${String(structural).slice(0, 16)}… · nodeshapes ${wireShapes}`);
-} catch (e) { console.log('LAW   fault:', e.message, '(within ~10s of a restart this may be warm-up — retry once)'); }
-await c.nc?.close?.().catch(() => {});
-
-// ── PACKAGING half — OPT-IN via CK_ONTOLOGY (informational; never a law verdict) ─────────────
-let fileDigest = null, sidecar = null, pkgRan = false;
-if (TTLPATH) {
-  pkgRan = true;
-  const ttlRes = await fetch(ORIGIN + TTLPATH).catch(() => null);
-  if (ttlRes?.ok) {
-    fileDigest = createHash('sha256').update(Buffer.from(await ttlRes.arrayBuffer())).digest('hex');
-    console.log(`PKG   ${TTLPATH} → sha256 ${fileDigest.slice(0, 16)}…`);
-  } else console.log(`PKG   ${TTLPATH} → HTTP ${ttlRes?.status ?? 'unreachable'} — not served (does not block law confirmation)`);
-  for (const p of [`${TTLPATH}.wave-3.12.sha256`, `${TTLPATH}.sha256`]) {
-    const res = await fetch(ORIGIN + p).catch(() => null);
-    if (res?.ok) { sidecar = (await res.text()).trim().split(/\s+/)[0]; console.log(`PKG   sidecar ${p} → ${sidecar.slice(0, 16)}…`); break; }
+  // W0 — ADMISSION. Assert what the door DID, never what env vars were set. Every CK door
+  // requires a verified bearer; an admitted unverified connection is a defect in the DOOR.
+  if (c.auth?.anonymous) {
+    console.log('W0    ✗ ADMITTED WITHOUT A VERIFIED IDENTITY — this door is NON-CONFORMANT (CK-DOOR v1.6.1 §2/§3).');
+    console.log('      Every measurement through it is void for acceptance. Not a posture, not a tier: a defect.');
+    process.exit(1);
   }
+  const cl = c.auth?.claims || {};
+  console.log(`W0    admitted verified · sub ${String(cl.sub ?? c.auth?.userId).slice(0, 18)}… · iss ${cl.iss ?? '?'} · aud ${JSON.stringify(cl.aud ?? null)}`);
+
+  // LAW — the binding criterion: the structural digest of the loaded root, read over the wire.
+  // One sanctioned retry: a first dispatch within ~10s of a restart/idle may warm-up-timeout.
+  let g = null;
+  for (let attempt = 1; attempt <= 2 && !g; attempt++) {
+    g = await c.dispatch('surface.grounding', `ckp://Kernel#${KERNEL}`, { iri: 'urn:ckp:core' }, { timeout: 12000 })
+          .catch((e) => { console.log(`LAW   attempt ${attempt}: ${e.message}${attempt === 1 ? ' — warm-up, retrying once' : ''}`); return null; });
+  }
+  const core = (g?.graphs || []).find((x) => x.iri === 'urn:ckp:core') || g?.graphs?.[0];
+  structural = core?.structuralDigest ?? null;
+  wireShapes = core?.nodeshapes ?? null;
+  if (structural) console.log(`LAW   surface.grounding urn:ckp:core → structuralDigest ${structural}  · nodeshapes ${wireShapes}`);
+} catch (e) {
+  console.log('LAW   fault:', e.message);
+} finally {
+  await c.nc?.close?.().catch(() => {});
 }
 
-const lawOk = structural === STRUCT;
-const shapesOk = SHAPES === null ? true : wireShapes === SHAPES;
-const pkgState = !pkgRan ? 'skipped (wire-only mode — the default)' : fileDigest === null ? 'not served' : (fileDigest === ROOT && (!sidecar || sidecar === ROOT)) ? 'matches' : 'DIVERGES';
 const measured = structural !== null;
-const verdict = !measured ? 'COULD NOT MEASURE' : (lawOk && shapesOk) ? 'LAW CONFIRMED' : 'LAW NOT CONFIRMED';
-console.log(`\n${verdict} — structural ${lawOk ? '✅' : `✗ (${String(structural).slice(0, 12)}… ≠ ${STRUCT.slice(0, 12)}…)`}` +
-  ` · shapes ${SHAPES === null ? `${wireShapes ?? '?'} (informational)` : `${wireShapes}/${SHAPES} ${shapesOk ? '✅' : '✗'}`}` +
-  ` · packaging ${pkgState} (informational: what ships ≠ what judges)`);
-process.exit(verdict === 'LAW CONFIRMED' ? 0 : verdict === 'LAW NOT CONFIRMED' ? 44 : 1);
+const pinned   = STRUCT !== null;
+const lawOk    = !pinned || structural === STRUCT;
+const shapesOk = SHAPES === null || wireShapes === SHAPES;
+const verdict  = !measured ? 'COULD NOT MEASURE'
+               : (lawOk && shapesOk) ? (pinned ? 'LAW CONFIRMED' : 'LAW MEASURED (unpinned — reporting, not confirming)')
+               : 'LAW NOT CONFIRMED';
+console.log(`\n${verdict}` +
+  (measured ? ` — structural ${pinned ? (lawOk ? '✅ matches pin' : `✗ ${structural.slice(0, 12)}… ≠ pin ${STRUCT.slice(0, 12)}…`) : `${structural.slice(0, 12)}… (no CK_STRUCT_SHA given)`}` +
+              ` · nodeshapes ${SHAPES === null ? `${wireShapes} (informational)` : `${wireShapes}/${SHAPES} ${shapesOk ? '✅' : '✗'}`}` : ''));
+process.exit(verdict === 'LAW NOT CONFIRMED' ? 44 : measured ? 0 : 1);

@@ -3,7 +3,7 @@
 // One import an app or LLM-agent harness needs:  import { CK } from '@conceptkernel/cklib';
 // `await CK.activate('<kernel>')` brings a concept kernel to life (authenticate + subscribe granted
 // scope); every operation on the returned `ConceptKernel` handle resolves to a single outbound
-// primitive — `ckp.dispatch(verb, kernel_urn, payload, identity)` (SPEC.CK-LIB-JS.v1.5.0 §4).
+// primitive — one governed dispatch through one door (SPEC.CK-LIB-JS.v1.6.1, CK-DOOR §4).
 //
 // App code names concept kernels and concepts (URNs) — never NATS subjects, codecs, handles,
 // trace ids, quads, graph ids, or query strings. The machinery underneath is exactly two layers:
@@ -29,8 +29,8 @@ export function normalizeKernel(kernel) {
   return 'ckp://Kernel#' + kernel;
 }
 
-// The explicit operation→verb table — the stable floor mapped to v3.9 verbs (never by parsing an
-// action-URN). Legacy v3.8 aliases are handled below L2 by the transport shim, not here.
+// The explicit operation→verb table — the facade mapped onto the SUBSTRATE'S wire verb names
+// (never by parsing an action-URN). The namespace is pgCK's vocabulary, written down, not invented.
 const OP_VERB = {
   create: 'instance.create',
   update: 'instance.update',
@@ -51,7 +51,9 @@ const OP_VERB = {
   match: 'concept.match',
 };
 
-const isUnknownAffordance = (r) => r && r.ok === false && (r.error === 'unknown_affordance' || r.error === 'unknown_verb');
+// v1.6.1 (R3.3): the refusal set is the substrate's CLOSED registry (surface.refusals, 52
+// codes, measured) — carrying extra aliases here silently widens it. One code, verbatim.
+const isUnknownAffordance = (r) => r && r.ok === false && r.error === 'unknown_affordance';
 
 /** The substrate's honest degrade on a derived read (pgCK#4 wire contract, ≥0.4.16): the value is
  *  materializing over budget — `recompute_in_progress: true` is the answer, never a stale/guessed value. */
@@ -64,14 +66,22 @@ export const isRecomputing = (r) => !!(r && r.ok === true && r.recompute_in_prog
  *                (render it verbatim) and `sqlstate` names the class.
  *    'fault'   — everything else (timeout, transport death, refused unknown). NO VERDICT WAS
  *                REACHED — never render as a judgment on the request; query before retrying. */
+/** v1.6.1 (R0.6): a refusal reaches the caller as a THROWN error carrying the substrate's
+ *  verdict VERBATIM — refused, sqlstate, and the untouched error body (R5.4: a SHACL
+ *  ValidationReport and a procedural refusal are different planes; neither is flattened). */
+export function refusalError(op, r) {
+  const e = new Error(`${op}: ${r?.refused ? 'refused' : 'error'} — ${String(r?.error ?? 'unknown').slice(0, 300)}`);
+  e.refused = r?.refused === true; e.sqlstate = r?.sqlstate ?? null; e.reply = r; e.verb = r?.verb ?? null;
+  return e;
+}
+
 export const outcomeOf = (r) => (r && r.ok === true) ? 'result' : (r && r.refused === true) ? 'refusal' : 'fault';
 
 // pgCK ≤0.4.x replies carry no uniform `.result`; each verb returns its own field. Map them so the
 // `.result`-keyed ingest + typed reads fire. (Reply-envelope normalization is pgCK design-Q1; per-verb
 // adapters until pgCK confirms the uniform reply envelope.)
 const REPLY_FIELD = {
-  'instance.query': 'rows', 'instances.list': 'instances',
-  'kernels.list': 'kernels', 'instance.get': 'instance',
+  'instance.query': 'rows', 'instance.get': 'instance',
   'instance.reach': 'reached', 'concept.match': 'candidates',
   'instance.snapshot': 'instances',
 };
@@ -183,7 +193,86 @@ export class ConceptKernel {
     this._opts = opts;
     this._closed = false;
     this._unsubs = [];
+    // v1.6.1 (R6.1 / A-9): the handle OWNS its bus — one handle = one kernel = one bus, scoped
+    // by construction (one transport per activation). No consumer types a NATS subject: every
+    // selector is semantic (kind · verb · type · mine). Built once, three ergonomics on top.
+    this._busFns = new Set();
+    if (transport && typeof transport.on === 'function') {
+      const mySub = () => transport.auth?.claims?.sub ?? transport.auth?.userId ?? null;
+      for (const kind of ['result', 'event', 'error', 'status', 'late']) {
+        transport.on(kind, (m) => {
+          const by = m?.by ?? null;
+          const sub = mySub();
+          const frame = {
+            kind,
+            verb: m?.verb ?? null,
+            type: m?.conceptType ?? null,
+            subjectIri: m?.subjectIri ?? null,
+            by,
+            // R6.3 (A-12): a comparison of two SERVER-attributed values (frame `by` header vs the
+            // connection's own verified sub) — never a client assertion of identity.
+            mine: !!(by && sub && (by === `urn:ckp:participant:${sub}` || by.endsWith(sub))),
+            // R6.5 (A-14): the consistency token, surfaced on every frame when the reply carries it.
+            sealedAtEpoch: m?.data?.sealedAtEpoch ?? m?.data?.sealed_at_epoch ?? null,
+            seq: m?.seq ?? null,
+            traceId: m?.traceId ?? null,
+            data: m?.data ?? m,
+          };
+          for (const f of this._busFns) { try { f(frame); } catch {} }
+        });
+      }
+    }
   }
+
+  // ── R6: the promise-first, subject-free event surface ──────────────────────
+  _matches(sel, fr) {
+    if (!sel) return true;
+    if (typeof sel === 'string') return fr.kind === sel;
+    if (sel.kind != null && fr.kind !== sel.kind) return false;
+    if (sel.verb != null && fr.verb !== sel.verb) return false;
+    if (sel.type != null && fr.type !== sel.type) return false;
+    if (sel.mine != null && fr.mine !== sel.mine) return false;
+    return true;
+  }
+
+  /** Callback form. `on({kind:'result', verb:'instance.create'}, fn)` — returns an unsubscribe fn. */
+  on(selector, fn) {
+    this._assertOpen();
+    const wrapped = (fr) => { if (this._matches(selector, fr)) fn(fr); };
+    wrapped.__inner = fn;
+    this._busFns.add(wrapped);
+    return () => this._busFns.delete(wrapped);
+  }
+  off(selector, fn) { for (const w of this._busFns) if (w.__inner === fn) this._busFns.delete(w); }
+  once(selector, fn) { const off = this.on(selector, (fr) => { off(); fn(fr); }); return off; }
+
+  /** Promise form (charter §4). REJECTS on timeout — deterministic: a frame, or an error. */
+  next(selector, { timeout = 15000 } = {}) {
+    this._assertOpen();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => { off(); reject(new Error(`next: no matching frame in ${timeout}ms (selector ${JSON.stringify(selector)})`)); }, timeout);
+      const off = this.on(selector, (fr) => { clearTimeout(timer); off(); resolve(fr); });
+    });
+  }
+
+  /** Async-iterator form — `for await (const e of k.stream({mine:false})) …`. Bounded queue. */
+  stream(selector, { buffer = 256 } = {}) {
+    this._assertOpen();
+    const queue = []; const waiters = [];
+    const off = this.on(selector, (fr) => {
+      const w = waiters.shift();
+      if (w) w({ value: fr, done: false });
+      else { queue.push(fr); if (queue.length > buffer) queue.shift(); }
+    });
+    return {
+      [Symbol.asyncIterator]() { return this; },
+      next() { return queue.length ? Promise.resolve({ value: queue.shift(), done: false }) : new Promise((r) => waiters.push(r)); },
+      return() { off(); while (waiters.length) waiters.shift()({ value: undefined, done: true }); return Promise.resolve({ value: undefined, done: true }); },
+    };
+  }
+
+  /** R6.6: the ONLY subject-exposing call — diagnostic, never the consumption path. */
+  subjects() { return typeof this._transport.subjects === 'function' ? this._transport.subjects() : []; }
 
   _assertOpen() { if (this._closed) throw new Error(`ConceptKernel ${this.name} is closed`); }
 
@@ -199,6 +288,38 @@ export class ConceptKernel {
 
   /** The kernel's declared, identity-granted affordance descriptors (sourced from sealed rows). */
   affordances() { return this._affordances.slice(); }
+
+  /** v1.6.1 (R4.1 / N-1): act one, first-class. `projectKind` is REQUIRED and never guessed —
+   *  the throw is local (cheaper than a wire round-trip to be told). Payload key is `project`
+   *  (never `kernel` — measured: a `kernel:` key produced a 30s fault, no verdict). */
+  async germinate({ projectKind, label } = {}) {
+    this._assertOpen();
+    if (!projectKind) throw new Error(
+      "germinate: `projectKind` is required and has no default — supply 'personal' or 'shared' " +
+      "(SPEC.MCP-pgCK §5: supplied, never guessed).");
+    const r = await this.do('kernel.germinate', { project: this.name, projectKind, ...(label ? { label } : {}) });
+    if (r && r.ok === false) throw refusalError('germinate', r);
+    return r;
+  }
+
+  /** v1.6.1 (R4.2 / N-2, N-3): the read-only checker surface, learnable BEFORE writing.
+   *  `declared({type})` is the property contract; `refusals()` the closed refusal set. */
+  get surface() {
+    const call = (verb) => async (payload = {}) => {
+      this._assertOpen();
+      const r = await this.do(verb, payload);
+      if (r && r.ok === false) throw refusalError(verb, r);
+      return r;
+    };
+    return {
+      check: call('surface.check'),
+      refusals: call('surface.refusals'),
+      typecheck: call('surface.typecheck'),
+      declared: call('surface.declared'),
+      unshaped: call('surface.unshaped'),
+      grounding: call('surface.grounding'),
+    };
+  }
 
   /** `do` + honest-fresh polling for derived reads (pgCK#4 contract). While the reply is the honest
    *  `recompute_in_progress` degrade, re-dispatches with backoff — safe: the substrate JOINS the
@@ -254,7 +375,6 @@ export class ConceptKernel {
   // To notify, CREATE a Finding — `k.create(<wave:Finding IRI>, {label, reason, findingState})`. There is
   // deliberately no `finding()` helper: it would have to hardcode a core IRI, and this client hardcodes
   // none (CL-D2). The caller supplies the IRI, as with every other type.
-  async notify(from, predicate, to, body = {}) { return writeResult(await this.do(OP_VERB.link, { source: from, predicate, target: to, body, event: true })); }
   async retire(id, reason) { return writeResult(await this.do(OP_VERB.retire, { id, reason })); }
   // U7 (v1.5.13, D1): same rule as writeResult — `verified` is the substrate's verdict verbatim,
   // absent means null. A proof digest attests hashing/chaining, never conformance; manufacturing
@@ -298,21 +418,33 @@ export class ConceptKernel {
 
   /** `instance.query` — pgCK's derived-QueryShape read (T1, ≥0.4.8): `type` is the declared class IRI;
    *  filter keys are short localnames the kernel resolves to its declared properties (undeclared rejected).
-   *  Degrades to the `instances.list` alias if query isn't an affordance; no client-side cache-filter. */
+   *  v1.6.1 (R0.6, charter §2): a refusal THROWS, verdict verbatim — an empty array is a lie
+   *  about a refusal. An honest empty read (ok:true, zero rows) still returns []. */
   async query(type, filter = {}) {
     const payload = { type, filter: toFilterArray(filter) };
     if (filter && !Array.isArray(filter)) { if (filter.limit != null) payload.limit = filter.limit; if (filter.offset != null) payload.offset = filter.offset; }
-    let r = await this.do(OP_VERB.query, payload);
-    if (isUnknownAffordance(r)) r = await this.do('instances.list', payload); // v3.8 alias (retires on the clock)
-    if (r && Array.isArray(r.result)) return r.result; // do() already ingested the flattened rows
-    return []; // governed read: no rows or a shape rejection → honest empty (TE-9 dropped the cache-filter)
+    const r = await this.do(OP_VERB.query, payload);
+    if (r && r.ok === false) throw refusalError('query', r);
+    const rows = (r && Array.isArray(r.result)) ? r.result : [];
+    // v1.6.1 (R5.1 / A-5): the substrate says complete/truncated on every enumerable read —
+    // dropping it was a green-tick collapse (T13). Attached NON-enumerably: spread, JSON,
+    // for…of are byte-identical to before; callers who want it read .completeness or use
+    // queryWithVerdict(). Never dropped again.
+    const verdict = r?.complete ?? r?.completeness ?? (r?.truncated != null ? (r.truncated ? 'truncated' : 'complete') : null);
+    Object.defineProperty(rows, 'completeness', { value: verdict, enumerable: false, configurable: true });
+    return rows;
   }
-  async list(type, filter = {}) { return this.query(type, filter); }
+
+  /** R5.1 explicit form: rows + the completeness verdict, verbatim. */
+  async queryWithVerdict(type, filter = {}) {
+    const rows = await this.query(type, filter);
+    return { rows, completeness: rows.completeness ?? null };
+  }
 
   /** Bounded traversal. Gated on pgCK CI-E-4; returns [] honestly if unavailable. */
   async reach(from, via, opts = {}) {
     const r = await this.do(OP_VERB.reach, { from, via, ...opts });
-    if (isUnknownAffordance(r)) return [];
+    if (r && r.ok === false) throw refusalError('reach', r);   // R0.6 — includes unknown_affordance
     if (r && Array.isArray(r.result)) { this._store.ingest(r.result); return r.result; }
     return [];
   }
@@ -334,12 +466,19 @@ export class ConceptKernel {
    *  stable { ok, proposal, state, epoch } — no manual proposal-id extraction. For a real multi-party quorum,
    *  use propose()/vote()/apply() directly. */
   async govern(op, detail = {}, opts = {}) {
-    const p = await this.propose(op, detail, opts.quorum ?? 1);
-    if (isUnknownAffordance(p)) return { ok: false, error: 'gov_plane_unavailable' };
-    if (!p?.iri) return { ok: false, error: 'no_proposal_iri', proposal: p };
+    const quorum = opts.quorum ?? 1;
+    const p = await this.propose(op, detail, quorum);
+    if (p && p.ok === false) throw refusalError('govern.propose', p);        // R0.6
+    if (!p?.iri) throw refusalError('govern.propose', { ok: false, error: 'no_proposal_iri', reply: p });
     const vote = await this.vote(p.iri, opts.value ?? 'approve');
+    if (vote && vote.ok === false) throw refusalError('govern.vote', vote);
     const applied = await this.apply(p.iri);
-    return { ok: !!(applied && applied.ok), proposal: p.iri, state: applied?.state, epoch: applied?.epoch, vote, applied };
+    if (applied && applied.ok === false) throw refusalError('govern.apply', applied);
+    // v1.6.1 (R5.2 / A-6): single-actor at quorum 1 is REHEARSAL and the return value says so.
+    // Client-derived until pgCK stamps it server-side (R5.3) — the label survives the cutover.
+    const rehearsal = quorum <= 1;
+    return { ok: !!(applied && applied.ok), proposal: p.iri, state: applied?.state,
+             epoch: applied?.epoch, rehearsal, rehearsalSource: 'client-derived', vote, applied };
   }
   /** Sugar: seal a type's transition map in one governed act (single-actor by default). */
   async setTransitionMap(targetClass, map, opts = {}) { return this.govern('set_transition_map', { targetClass, map }, opts); }
@@ -436,25 +575,5 @@ export const CK = {
     return handle;
   },
 };
-
-/**
- * @ckOn(urn) — decorator sugar over `k.bind`. Records the binding on the class; wired when the
- * instance's handle field (`this.kernel` / `this.ck` / `this._ck`) is set. The function form
- * `k.bind(urn, fn)` is the canonical surface (§4.9).
- */
-export function ckOn(urn, opts = {}) {
-  return function (target, key) {
-    const ctor = target?.constructor ?? target;
-    (ctor.__ckOn ||= []).push({ urn, key, opts });
-    return undefined;
-  };
-}
-
-/** Wire @ckOn-decorated methods of `obj` onto a handle (call after assigning the handle field). */
-export function wireCkOn(obj, handle) {
-  const binds = obj?.constructor?.__ckOn || [];
-  const unbinds = binds.map(({ urn, key, opts }) => handle.bind(urn, (...a) => obj[key](...a), opts));
-  return () => unbinds.forEach((u) => u && u());
-}
 
 export default CK;
