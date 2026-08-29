@@ -42,15 +42,17 @@ const RUN    = 'beat-' + Date.now().toString(36);            // stamped into eve
 const CKP   = 'https://conceptkernel.org/ontology/v3.11/core#';      // v3.12 root keeps the v3.11 core ns (measured in core.ttl)
 const RECON = 'https://conceptkernel.org/ontology/v3.12/recon#';
 const NOTE  = `urn:ckp:${KERNEL}/type/BeatNote`;
-const DIGESTS = {                                            // sha256 of the v3.12 module files (pgCK tree, 2026-08-26)
-  wave:  'ad887db28c6e0ea04c7cbd835c40dc5441f073be988475a9634c76e9131db727',
-  recon: '6a7c199e7ad19580b5e975624d15a9d4823e20dee9946cd20600b04c509100ea',
+// Module digests are PER-DEPLOYMENT declarations (A-8/R2.5 — env-only, NO kit constants; a baked
+// digest is guaranteed to go false-RED when a module revision lands). Undeclared ⇒ rung SKIPPED.
+const DIGESTS = {
+  ...(process.env.CK_WAVE_SHA  ? { wave:  process.env.CK_WAVE_SHA }  : {}),
+  ...(process.env.CK_RECON_SHA ? { recon: process.env.CK_RECON_SHA } : {}),
 };
 
 const ladder = [];
 const rung = (id, name, r, expected = null) => {
-  const o = r?.__timeout ? 'FAULT' : outcomeOf(r);
-  const pass = expected ? (o === expected) : (o !== 'FAULT');
+  const o = r?.__timeout ? 'fault' : outcomeOf(r);        // one case, one vocabulary (was: 'FAULT'
+  const pass = expected ? (o === expected) : (o !== 'fault');   // vs 'fault' — faults passed as ✅)
   ladder.push({ id, name, outcome: o, pass, expected,
     detail: r?.__timeout ? `no reply in ${WAIT}ms` : (r?.error ?? null),
     keys: r && !r.__timeout ? Object.keys(r).slice(0, 10) : [] });
@@ -71,9 +73,13 @@ const dp = (verb, payload) => Promise.race([
   new Promise((res) => setTimeout(() => res({ __timeout: true }), WAIT)),
 ]);
 
-// W1/W2 — the reply axis, and the state cited by digest
-const w1 = rung('W1', 'dispatch answers (surface.check)', await dp('surface.check', {}));
-if (w1.outcome === 'FAULT') {
+// W1/W2 — the reply axis, and the state cited by digest.
+// The ONE sanctioned retry (CK-DOOR §2): a first dispatch within ~10s of restart/idle may
+// warm-up-timeout — retry once, reads only, and say so. door-beat was the only gate without it.
+let w1r = await dp('surface.check', {});
+if (w1r?.__timeout) { console.log('  … W1 warm-up timeout — the sanctioned single retry (read)'); w1r = await dp('surface.check', {}); }
+const w1 = rung('W1', 'dispatch answers (surface.check)', w1r);
+if (w1.outcome === 'fault') {
   skip('W2..W11', 'everything transactional', 'the reply axis is dead — nothing beyond W1 is measurable');
   finish();
 }
@@ -86,7 +92,7 @@ const w3 = rung('W3', `germinate ${KERNEL} (projectKind personal — supplied, n
 
 // W4 — one governed act to completion (quorum 1 IS REHEARSAL and the seal says so)
 let applied = false;
-if (w3.outcome !== 'FAULT') {
+if (w3.outcome !== 'fault') {
   const prop = await dp('kernel.propose_change', { op: 'add_class', about: `urn:ckp:${KERNEL}/kernel`,
     detail: { class: NOTE, label: 'BeatNote', comment: `door-beat ${RUN}: quorum 1 is rehearsal, stated here` } });
   const pr = rung('W4a', 'propose add_class BeatNote', prop);
@@ -117,11 +123,14 @@ if (applied) {
 rung('W7a', 'bare-name type must refuse', await dp('instance.create', { type: 'NotAnIri', probe: RUN }), 'refusal');
 rung('W7b', 'undeclared type must refuse', await dp('instance.create', { type: `urn:ckp:${KERNEL}/type/NeverDeclared${RUN}`, probe: RUN }), 'refusal');
 
-// W8 — module adoptions by digest (anonymous shell ⇒ an identity refusal is the honest boundary)
+// W8 — module adoptions. L-9 resolution (PASS-7 §5): AdoptionShape requires intoProject · sourceDigest
+// · intoEpoch (the old payload omitted intoEpoch → MinCount refusal we misread as a substrate fault).
+const curEpoch = (await dp('surface.check'))?.epoch ?? 0;
+if (!Object.keys(DIGESTS).length) skip('W8', 'module adoptions', 'no CK_WAVE_SHA/CK_RECON_SHA declared — digests are per-deployment, never kit constants');
 for (const [mod, digest] of Object.entries(DIGESTS)) {
-  rung(`W8:${mod}`, `adopt ${mod} by digest ${digest.slice(0, 12)}…`,
-    await dp('instance.create', { type: `${CKP}Adoption`, adopts: `urn:ckp:module/${mod}/v3.12`,
-      intoProject: `urn:ckp:${KERNEL}`, sourceDigest: digest }));
+  rung(`W8:${mod}`, `adopt ${mod} by digest ${digest.slice(0, 12)}… (intoEpoch ${curEpoch})`,
+    await dp('instance.create', { type: `${CKP}Adoption`, adopts: `urn:ckp:module:${mod}`,
+      intoProject: `urn:ckp:project:${KERNEL}`, intoEpoch: curEpoch, sourceDigest: digest }));
 }
 
 // W9 — the reference spore's own positive/negative pair (SPORE spec §9: the half that matters)
@@ -137,7 +146,7 @@ rung('W11', 'lex read (instance.query lexicon Pattern)', await dp('instance.quer
 finish();
 
 function finish() {
-  const faults = ladder.filter((r) => r.outcome === 'FAULT' && !r.expected).length;
+  const faults = ladder.filter((r) => r.outcome === 'fault' && !r.expected).length;
   const failed = ladder.filter((r) => r.pass === false).length;
   const proven = ladder.some((r) => r.id === 'W6b' && r.outcome === 'result');
   console.log(`\ndoor-beat: ${ladder.length} rungs · ${failed} failed · ${faults} faults · seal-and-prove ${proven ? 'PROVEN' : 'NOT PROVEN'}`);

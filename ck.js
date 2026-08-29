@@ -212,8 +212,11 @@ export class ConceptKernel {
             // R6.3 (A-12): a comparison of two SERVER-attributed values (frame `by` header vs the
             // connection's own verified sub) — never a client assertion of identity.
             mine: !!(by && sub && (by === `urn:ckp:participant:${sub}` || by.endsWith(sub))),
-            // R6.5 (A-14): the consistency token, surfaced on every frame when the reply carries it.
-            sealedAtEpoch: m?.data?.sealedAtEpoch ?? m?.data?.sealed_at_epoch ?? null,
+            // R6.5 (A-14) + Q-4 contract (pgCK PASS-7 §4): NEVER in headers. Result replies carry
+            // flat camelCase; EVENT bodies are the sealed instance verbatim, so the key is the full
+            // IRI. Two spellings by frame class — both in the contract, no invented aliases.
+            sealedAtEpoch: m?.data?.sealedAtEpoch
+              ?? m?.data?.['https://conceptkernel.org/ontology/v3.11/core#sealedAtEpoch'] ?? null,
             seq: m?.seq ?? null,
             traceId: m?.traceId ?? null,
             data: m?.data ?? m,

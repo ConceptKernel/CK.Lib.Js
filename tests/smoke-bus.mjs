@@ -79,7 +79,11 @@ console.log('R6.5 — sealedAtEpoch surfaces on frames; subjects() is diagnostic
   const { k, t } = mk();
   let fr = null; k.on({ kind: 'event' }, (x) => { fr = x; });
   t.emit('event', { verb: 'v', data: { sealedAtEpoch: 4 } });
-  ok('sealedAtEpoch surfaced from the reply body', fr.sealedAtEpoch === 4);
+  ok('sealedAtEpoch surfaced from a result-reply body (flat camelCase)', fr.sealedAtEpoch === 4);
+  // Q-4 contract (pgCK PASS-7 §4): EVENT frames carry the sealed instance verbatim — the key is
+  // the FULL IRI. Two spellings by frame class, named in the contract, both must surface.
+  t.emit('event', { verb: 'v', data: { 'https://conceptkernel.org/ontology/v3.11/core#sealedAtEpoch': 7 } });
+  ok('sealedAtEpoch surfaced from an event body (full-IRI key)', fr.sealedAtEpoch === 7);
   const subs = k.subjects();
   ok('subjects() reports state per subject', subs[0].state === 'subscribed');
 }
