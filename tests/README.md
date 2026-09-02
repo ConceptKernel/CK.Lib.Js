@@ -36,9 +36,14 @@ export CK_TOKEN=<bearer for your own bot identity>
 
 1. **Roster.** `CK_KERNEL` must be in that door's `pgck.kernels`. An un-rostered kernel's
    dispatches vanish: no error, no log line, no refusal. Silence ≠ refusal.
-2. **Restart, not reload.** NATS grants mint at container **start**. `pg_reload_conf()` moves
-   the GUC and not the grants, so a roster edit without a restart leaves the door serving the
-   previous roster — silently. *(Measured; this has cost a full day, twice.)*
+2. **Your own socket, before the door.** Grants are minted **per CONNECT** and die with the
+   socket. A door that restarted leaves you holding a corpse whose silence is byte-identical to
+   an un-rostered kernel — so **reconnect first, then diagnose the door.** A roster edit itself
+   takes effect on `pg_reload_conf()` (pgCK 0.4.87+); a restart is needed only for a new `.so`
+   or a pre-fix artifact, and on union builds a kernel sealed through the door routes itself.
+   *(Authority: sealed ruling `ruling-1788038690953958000`. **Corrected 2026-08-29** — this
+   README previously taught "Restart, not reload: grants mint at container start", which was
+   one unreproducible A/B echoed across six documents, `finding-1788038636576750000`.)*
 
 **Warm-up.** A first dispatch within ~10 s of a restart or after idle may time out. **Retry
 once, reads only, and say that is what happened.** One cold dispatch is not a finding. Tier 1

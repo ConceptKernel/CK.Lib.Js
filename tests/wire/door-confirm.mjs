@@ -58,6 +58,25 @@ try {
   structural = core?.structuralDigest ?? null;
   wireShapes = core?.nodeshapes ?? null;
   if (structural) console.log(`LAW   surface.grounding urn:ckp:core → structuralDigest ${structural}  · nodeshapes ${wireShapes}`);
+
+  // FLOOR (v1.6.3, informational — reporting, never confirming): what of the 0.4.109 surface
+  // this door actually serves. Absent fields render honestly as not-served — a pre-floor door
+  // is reported, not failed; a version number is never a measurement, and neither is this a
+  // conformance verdict (that is door-suite's job once a door claims the floor).
+  const chk = await c.dispatch('surface.check', `ckp://Kernel#${KERNEL}`, {}, { timeout: 12000 }).catch(() => null);
+  if (chk?.ok) {
+    const ep = chk.epoch ?? '?';
+    const roster = chk.roster
+      ? `union ${Array.isArray(chk.roster.union) ? chk.roster.union.length : '?'} (guc ${Array.isArray(chk.roster.guc) ? chk.roster.guc.length : '?'}) — read union, never guc alone`
+      : 'not served (pre-0.4.90 roster read)';
+    const eid = chk.engineIdentity
+      ? `${chk.engineIdentity.verdict ?? chk.engineIdentity.agreement ?? JSON.stringify(chk.engineIdentity).slice(0, 60)}`
+      : 'not served (pre-0.4.103 — loaded-vs-artifact divergence is invisible from here)';
+    console.log(`FLOOR surface.check → epoch ${ep} · roster ${roster}`);
+    console.log(`FLOOR engineIdentity → ${eid}${chk.engineIdentity?.verdict === 'diverged' ? '  ⚠ REPORT the divergence; never restart to hide it' : ''}`);
+  } else console.log('FLOOR surface.check not readable from this seat (grant or pre-floor door) — reported, not judged');
+  const ref = await c.dispatch('surface.refusals', `ckp://Kernel#${KERNEL}`, {}, { timeout: 12000 }).catch(() => null);
+  if (ref?.ok) console.log(`FLOOR surface.refusals → registryDigest ${ref.registryDigest ? ref.registryDigest.slice(0, 16) + '… (cache key)' : 'not served (pre-0.4.90)'} · count ${ref.count ?? '?'} (informational, NEVER a cache key)`);
 } catch (e) {
   console.log('LAW   fault:', e.message);
 } finally {

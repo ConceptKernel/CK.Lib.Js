@@ -2,6 +2,86 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.6.3] — 2026-09-02
+
+**The floor release — pgCK settled 24 obligations (v0.4.94→0.4.109, one day, ledger armed as a
+gate); this client makes them land.** Built against `SPEC.CK-DOOR.v1.6.3` §11 and pgCK's
+`to-CKLIBJS-PASS-13` (six behaviour changes, named). 10 suites, **227 passed / 0 failed**, every
+change RED-first. **No tag skipped a document index: v1.6.2 was a spec-only cut of the door
+contract; the client line re-aligns here.** **Wire-confirmed 2026-09-02 on `pgck.localhost`
+at pgCK 0.4.109 (`engineIdentity agree`, law `2a7b14d8…`/31 pinned):** gate 1 CONFIRMED ·
+gate 2 PROVEN · gate 3 **33 rungs / 0 failed / seal-and-prove PROVEN** ·
+`release-confirm-1.6.3` **21/21 through the released surface** — five stamps with a forged
+`onBehalfOf` claim STRIPPED, quorum floor refuse@1/accept@2 in-seat, virgin epoch 0→1 twice,
+tick drafted-and-moved-nothing, never-saw free, `no_orbit_declared` by name, all three id
+forms + 42704 on nonexistent, server `rehearsal` + quorum pair read back live. Two honest
+gaps: role narrowing and park-at-five await the two-party pass. One finding filed upstream:
+the case-07 seam extends to the quorum floor at propose (cross-context reads the acting
+kernel; standing recheck ships as door-beat W15c). `ckdev`/`ckone` still pre-floor — anything
+a ≥0.4.109 door refuses that PASS-13 says lands is a **ledger regression, filed with the
+reply verbatim** (CK-DOOR §11.10).
+
+### Breaking
+- **`get()` throws on a refusal** instead of returning `null`. pgCK E-5 (0.4.102) gave the
+  substrate one id vocabulary — `instance.get` now REFUSES an unresolvable id (`unknown_instance`,
+  42704, hint naming the accepted forms) where it answered a confident null. A caller reading
+  `null` as *not found* was reading a gate verdict as an absence; `null` now only ever means a
+  pre-floor door's honest `{ok:true, instance:null}` miss. Charter §2, applied.
+- **`outcomeOf()` has four outcomes**: `result · refusal · fault · delegated`. sqlstate `0A000`
+  is the delegate seam (`verb_delegated` — *not refused-by-law, not served at THIS tier*), and an
+  `ok:false` with a registered non-XX sqlstate classifies as a **refusal even without the flag**
+  (pgRDF's rule: XX is the only class a genuine fault carries; evaluable since pgCK 0.4.106 took
+  89 untyped refusal sites to zero). No-sqlstate faults (timeouts) are unchanged.
+- **Four reads join the throwing side** (final charter-§2 audit): `verify()` / `provenance()` /
+  `snapshot()` / `match()` now THROW on a refusal — they were v1.6.1 leftovers rendering one as
+  verdict-unknown / a raw body / `[]` / `[]`. And **`validate()` stops flattening the planes**
+  (R5.4): a reply carrying `violations` is the SHACL report, `conforms:false` verbatim as
+  before; a PROCEDURAL refusal now throws instead of manufacturing a `conforms:false` the gate
+  never reached. Writes are unchanged (verdict-shaped results, T-D2).
+- **`govern()` reads the verdict back**: when apply's success path carries the quorum pair
+  (pgCK 0.4.90+), the returned `rehearsal` is the **server's**, `rehearsalSource:'server'`, and
+  `approvals` / `quorum` / `quorumNote` ride along — an approval count without the bar it cleared
+  is not a number. The client derivation survives only as the labelled fallback
+  (`'client-derived'`) for doors that do not send one.
+
+### Added
+- **`k.clock.{next,tick,boundary}`** — the clock surface (pgCK 0.4.108/109: `orbit.next`,
+  `score.tick`, `signal.boundary`), zero interpretation, one rendered limit: **the tick may
+  DRAFT only**. `tick()` throws naming CK-DOOR R-20 if a door ever reports
+  `epochUnchanged:false` — a tick that advances the epoch is a door violation, not a result.
+  `no_orbit_declared` throws verbatim (*no orbit is a real answer, not a zero*);
+  `{sealed:false, reason:'never_saw'}` returns as the SUCCESS it is (absence of a Signal is
+  correctly free). The `law` object renders which value governed each number; defer/discard
+  banding and decay are **not computed** by the substrate and are presented as exactly that.
+- **The fifth stamp**: `onBehalfOf` passes through `writeResult` and every bus frame (flat
+  camelCase on result replies, FULL-IRI key on event bodies, never headers — the Q-4 contract).
+  **Absence is the signal**: `null` renders *acted directly*, never unknown. Never aggregated;
+  never asserted in a payload (the substrate strips all five server-derived stamps).
+- Governance surfaces expect **`role_required` on all three verbs** (pgCK 0.4.107 role
+  narrowing) and never fault on **`proposalState 'draft'`** (pass-3 law) — a draft carries no
+  votes, meets no quorum, and its one affordance is a person's own PROMOTE.
+- `k.surface` and `k.clock` are **memoized with one shared call helper** — stable identity
+  (`k.clock === k.clock`), zero per-access allocation, and the refusal contract cannot drift
+  between namespaces.
+- `door-confirm` gains **FLOOR reads** (informational): `surface.check` epoch ·
+  `roster.union` (never `guc` alone) · `engineIdentity` (divergence REPORTED, never restarted
+  away) · `surface.refusals` `registryDigest` (the cache key; the count never is).
+
+### Changed
+- The refusal-registry comment cites `registryDigest`, not a code count — the registry moved
+  (C-15 added five codes alone) and a count is a coincidence waiting to happen.
+- `match()` carries its honesty caveat in-source: `concept.match` cannot see sealed instances
+  (F-P2-1, unchanged through 0.4.109) — it is not a search over sealed facts.
+- Germination stamps: both spellings accepted (`ckp:epoch` pre-rename, `ckp:germinatedAtEpoch`
+  from wave-3.12-pass-2 — the emitter follows the LOADED law), **neither read as live** — the
+  live epoch comes from epoch reads (`surface.check`, apply receipts), never a sealed Kernel.
+
+### Retired
+- The `+2 measured, +1 real` virgin-epoch caveat — pgCK 0.4.90+ made the first apply an honest
+  0→1; the caveat now describes nothing and is deleted rather than carried as history
+  (purge-gated in `smoke-purge`, alongside a gate that its first cut could not fail — it missed
+  a line-wrapped count and now flattens comment continuations first; build rule 6, kept).
+
 ## [1.6.1] — 2026-08-29
 
 **The determinism release — it works, or it errors, and the error says which.** Built to the

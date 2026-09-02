@@ -19,7 +19,7 @@ import CKStore from './ck-store.js';
 // unverifiable — including ck_doctor's, which reported "1.5.10" on the same line as the v1.5.11 digest
 // it had just computed. A label that lives beside the bytes drifts from them; one that lives IN the
 // bytes cannot. Pinned to package.json by tests/smoke-ck-client.mjs, so the two can never disagree.
-export const VERSION = '1.6.1';
+export const VERSION = '1.6.3';
 
 /** Normalize a kernel name or URN to the canonical `ckp://Kernel#<Name>` form. */
 export function normalizeKernel(kernel) {
@@ -49,10 +49,16 @@ const OP_VERB = {
   vote: 'kernel.vote',
   apply: 'kernel.apply',
   match: 'concept.match',
+  // v1.6.3 (R11.1, pgCK 0.4.108/109): the clock surface — exposed via `k.clock`.
+  nextCrossing: 'orbit.next',
+  tick: 'score.tick',
+  boundary: 'signal.boundary',
 };
 
-// v1.6.1 (R3.3): the refusal set is the substrate's CLOSED registry (surface.refusals, 52
-// codes, measured) — carrying extra aliases here silently widens it. One code, verbatim.
+// v1.6.1 (R3.3) / v1.6.3 (R10.1): the refusal set is the substrate's CLOSED registry
+// (surface.refusals) — cache on registryDigest, NEVER on a count: the registry moves
+// (C-15 alone added five codes) and a count is a coincidence waiting to happen.
+// Carrying extra aliases here silently widens the set. One code, verbatim.
 const isUnknownAffordance = (r) => r && r.ok === false && r.error === 'unknown_affordance';
 
 /** The substrate's honest degrade on a derived read (pgCK#4 wire contract, ≥0.4.16): the value is
@@ -75,7 +81,18 @@ export function refusalError(op, r) {
   return e;
 }
 
-export const outcomeOf = (r) => (r && r.ok === true) ? 'result' : (r && r.refused === true) ? 'refusal' : 'fault';
+/** v1.6.3 (R10.3, pgCK C-15/B7-L7): with every refusal site typed (89→0 at 0.4.106), the
+ *  classifier finally runs on data — FOUR outcomes: 'result' · 'refusal' · 'fault' · 'delegated'.
+ *  sqlstate 0A000 is the DELEGATE SEAM (verb_delegated: "not refused-by-law — not served at
+ *  THIS tier") — neither a law refusal nor a fault; flattening it into either misreports which
+ *  plane spoke. And pgRDF's stronger rule: ok:false with a non-XX sqlstate IS a refusal even
+ *  without the flag — XX is the only class a genuine fault carries. No sqlstate, no flag
+ *  (timeout, transport death) stays 'fault': no verdict was reached. */
+export const outcomeOf = (r) => (r && r.ok === true) ? 'result'
+  : (r && r.sqlstate === '0A000') ? 'delegated'
+  : (r && r.refused === true) ? 'refusal'
+  : (r && r.ok === false && typeof r.sqlstate === 'string' && r.sqlstate.length > 0 && !r.sqlstate.startsWith('XX')) ? 'refusal'
+  : 'fault';
 
 // pgCK ≤0.4.x replies carry no uniform `.result`; each verb returns its own field. Map them so the
 // `.result`-keyed ingest + typed reads fire. (Reply-envelope normalization is pgCK design-Q1; per-verb
@@ -139,8 +156,10 @@ function writeResult(reply) {
   // proof_digest and no `verified` used to report true and now reports null (falsy either way for
   // `if (w.verified)`, but no longer an affirmative claim).
   //
-  // #15, extended to ALL FOUR STAMPS: `createdBy` / `sealedAtEpoch` / `producedBy` /
-  // `conformsToShape` are PASS-THROUGH — surfaced verbatim, never interpreted, null when absent.
+  // #15, extended to ALL FIVE STAMPS (v1.6.3 R8, pgCK C-7 0.4.107): `createdBy` /
+  // `sealedAtEpoch` / `producedBy` / `conformsToShape` / `onBehalfOf` are PASS-THROUGH —
+  // surfaced verbatim, never interpreted, null when absent. NEVER aggregated into one boolean:
+  // they answer five different questions and fail five different ways.
   // The substrate derives all four at seal (an A3-adopted project targets InstanceShape, so they are
   // REQUIRED there, not merely stored). createdBy: a caller comparing what it sent against what came
   // back learns its own identity claim had no effect, with no differential refusal to use as an
@@ -160,6 +179,12 @@ function writeResult(reply) {
     sealedAtEpoch: reply.sealedAtEpoch ?? null,
     producedBy: reply.producedBy ?? null,
     conformsToShape: reply.conformsToShape ?? null,
+    // v1.6.3 (R8.3): ABSENCE IS THE SIGNAL — null means the participant acted directly.
+    // The substrate never stamps "on behalf of myself"; this client never synthesises one,
+    // and never renders absence as unknown or an error. Present ⇒ an Agent sealed for a
+    // participant. It says WHO WAS ACTED FOR, never what did the acting (processRef/
+    // executingHost stay unfilled — the Run model-identity gap is not closed by this stamp).
+    onBehalfOf: reply.onBehalfOf ?? null,
     seq: reply.seq,
   };
 }
@@ -217,6 +242,11 @@ export class ConceptKernel {
             // IRI. Two spellings by frame class — both in the contract, no invented aliases.
             sealedAtEpoch: m?.data?.sealedAtEpoch
               ?? m?.data?.['https://conceptkernel.org/ontology/v3.11/core#sealedAtEpoch'] ?? null,
+            // v1.6.3 (R8.2): the fifth stamp rides the same two-spellings-by-frame-class
+            // contract as sealedAtEpoch — flat camelCase on result replies, FULL-IRI key on
+            // event bodies, NEVER read from headers, no invented third alias.
+            onBehalfOf: m?.data?.onBehalfOf
+              ?? m?.data?.['https://conceptkernel.org/ontology/v3.11/core#onBehalfOf'] ?? null,
             seq: m?.seq ?? null,
             traceId: m?.traceId ?? null,
             data: m?.data ?? m,
@@ -307,20 +337,73 @@ export class ConceptKernel {
 
   /** v1.6.1 (R4.2 / N-2, N-3): the read-only checker surface, learnable BEFORE writing.
    *  `declared({type})` is the property contract; `refusals()` the closed refusal set. */
-  get surface() {
-    const call = (verb) => async (payload = {}) => {
+  /** One refusal-throwing call shape for every read-namespace verb (surface.* and clock.*) —
+   *  a single helper, so the refusal contract cannot drift between namespaces (v1.6.3 dedup). */
+  _nsCall(verb) {
+    return async (payload = {}) => {
       this._assertOpen();
       const r = await this.do(verb, payload);
       if (r && r.ok === false) throw refusalError(verb, r);
       return r;
     };
-    return {
-      check: call('surface.check'),
-      refusals: call('surface.refusals'),
-      typecheck: call('surface.typecheck'),
-      declared: call('surface.declared'),
-      unshaped: call('surface.unshaped'),
-      grounding: call('surface.grounding'),
+  }
+
+  get surface() {
+    // memoized — one object per handle, stable identity, zero per-access allocation
+    return this._surfaceNS ??= {
+      check: this._nsCall('surface.check'),
+      refusals: this._nsCall('surface.refusals'),
+      typecheck: this._nsCall('surface.typecheck'),
+      declared: this._nsCall('surface.declared'),
+      unshaped: this._nsCall('surface.unshaped'),
+      grounding: this._nsCall('surface.grounding'),
+    };
+  }
+
+  /** v1.6.3 (R11): the clock surface — three verbs, zero interpretation, one rendered limit.
+   *  THE CONSTITUTIONAL LIMIT (CK-DOOR v1.6.3 R-20, law predating the mechanism): a Score
+   *  crossing thresholdPromote DRAFTS a Proposal — the tick never seals content, votes, or
+   *  applies. A tick result is an agenda item with its evidence already gathered, NEVER a
+   *  decision; a draft's one affordance is PROMOTE, a person's own sealed act.
+   *  Two clocks, never collapsed (R-21): the tick is an escapement (bounded interval, no
+   *  opinion about the hour); orbits are the gear train (period/lead/seat/anchor — LAW on the
+   *  sealed Kernel, seat server-driven, all governed via set_kernel_policy). The escapement
+   *  is not a scheduler: crossings ENQUEUE, the drain is fair, failing jobs park at five. */
+  get clock() {
+    // no_orbit_declared (42704) throws via _nsCall verbatim: "no orbit is a real answer, not
+    // a zero" — this client renders "this kernel keeps no clock", never a fabricated time.
+    // Memoized — one object per handle, stable identity, zero per-access allocation.
+    return this._clockNS ??= {
+      /** orbit.next — the next crossing, third-party re-derivable: the reply's `method`
+       *  string IS the formula (anchor + ceil((now-anchor)/period)*period). Render the
+       *  server's value as the answer (zero client authority); re-derive only to corroborate
+       *  — a disagreement is a finding to file, not a value to prefer. Geometry MAY be drawn
+       *  (nextCrossing, prepareOpensAt — labelled as law-derived); outcomes MAY NOT. */
+      next: this._nsCall(OP_VERB.nextCrossing),
+      /** score.tick — Scores DERIVED under the kernel's own law; the reply's `law` object
+       *  says which value governed each number (declared override or NAMED substrate
+       *  default — absence means "the substrate default governs", a real answer). Computes
+       *  the PROMOTE half only: defer/discard stay human-read until the weights are earned,
+       *  and decay is declared law, NOT applied — present neither as computed. One standing
+       *  draft per CONCEPT, never per crossing. */
+      tick: async (payload = {}) => {
+        const r = await this._nsCall(OP_VERB.tick)(payload);
+        if (r && r.epochUnchanged === false) {
+          // The one interpretation the limit itself licenses: a tick that moved the epoch is
+          // a DOOR VIOLATION of CK-DOOR R-20 — said, with the reply attached, never rendered
+          // as a result. File it as a ledger regression with this reply verbatim (§11.10).
+          const e = new Error('score.tick: door reported epochUnchanged:false — the tick may DRAFT only (CK-DOOR v1.6.3 R-20); a tick that advances the epoch is a door violation, not a result');
+          e.reply = r;
+          throw e;
+        }
+        return r;
+      },
+      /** signal.boundary — ONE hash-chained boundary head per boundary, never per event; the
+       *  raw presence trace stays organ-local (R-14). {ok:true, sealed:false, reason:
+       *  'never_saw'} is a SUCCESS and returns normally: the absence of a Signal is correctly
+       *  free, and sealing a zero would manufacture evidence of an encounter that did not
+       *  happen. Never rendered as a failure, an error, or a retryable condition. */
+      boundary: this._nsCall(OP_VERB.boundary),
     };
   }
 
@@ -382,12 +465,19 @@ export class ConceptKernel {
   // U7 (v1.5.13, D1): same rule as writeResult — `verified` is the substrate's verdict verbatim,
   // absent means null. A proof digest attests hashing/chaining, never conformance; manufacturing
   // one from the other was the exact defect #16 removed one function over.
-  async verify(id) { const r = await this.do(OP_VERB.verify, { id }); return { verified: r?.verified ?? null, proof_digest: r?.proof_digest ?? null, seq: r?.seq }; }
-  async provenance(id, depth) { const r = await this.do(OP_VERB.provenance, { id, depth }); return r?.result ?? r; }
-  async snapshot(scope) { const r = await this.do(OP_VERB.snapshot, scope ? { scope } : {}); return r?.result ?? []; }
+  // v1.6.3 (final audit, charter §2): READS THROW on a refusal; writes return the verdict-
+  // shaped result (T-D2). These three were v1.6.1 leftovers on the wrong side of that split —
+  // a refusal rendered as verdict-unknown / a raw body / an empty array respectively.
+  async verify(id) { const r = await this.do(OP_VERB.verify, { id }); if (r && r.ok === false) throw refusalError('verify', r); return { verified: r?.verified ?? null, proof_digest: r?.proof_digest ?? null, seq: r?.seq }; }
+  async provenance(id, depth) { const r = await this.do(OP_VERB.provenance, { id, depth }); if (r && r.ok === false) throw refusalError('provenance', r); return r?.result ?? r; }
+  async snapshot(scope) { const r = await this.do(OP_VERB.snapshot, scope ? { scope } : {}); if (r && r.ok === false) throw refusalError('snapshot', r); return r?.result ?? []; }
   /** TE-4: governed concept.match (pgCK T6, ≥0.4.13) — full-text or token match against the kernel's
-   *  declared concept index; returns the `candidates` array (REPLY_FIELD normalised to `.result`). */
-  async match(term) { const r = await this.do(OP_VERB.match, { term }); return r?.result ?? []; }
+   *  declared concept index; returns the `candidates` array (REPLY_FIELD normalised to `.result`).
+   *  v1.6.3 (R14.5) HONESTY CAVEAT, unchanged through pgCK 0.4.109 (F-P2-1): concept.match
+   *  CANNOT SEE SEALED INSTANCES — it reads a plane sealed facts do not land on. This is NOT
+   *  a search over sealed instances and must never be presented as one; grounding-for-
+   *  outsiders has no path yet, per pgCK's own standing-gaps table (CK.v0.4.109 §3). */
+  async match(term) { const r = await this.do(OP_VERB.match, { term }); if (r && r.ok === false) throw refusalError('match', r); return r?.result ?? []; }
 
   /** TE-7: native sealed-map transition (pgCK T3, ≥0.4.10). The kernel reads the instance type's OWN sealed
    *  transition map; an illegal move returns {error:'invalid_transition', from, to, allowed} — `allowed` is
@@ -405,7 +495,12 @@ export class ConceptKernel {
    *  boolean-grade local reduction. */
   async validate(body) {
     const r = await this.do(OP_VERB.validate, body);
-    if (r?.ok === false) return { conforms: false, violations: r.violations ?? [], error: r.error };
+    // v1.6.3 (final audit, R5.4): the two refusal planes are never flattened. A reply carrying
+    // `violations` IS the SHACL report — conforms:false verbatim. A PROCEDURAL refusal carries
+    // none, and rendering it conforms:false manufactures a verdict the gate never reached — it
+    // THROWS instead, clause intact. (No sourceConstraintComponent ⇒ not SHACL.)
+    if (r?.ok === false && !Array.isArray(r.violations)) throw refusalError('validate', r);
+    if (r?.ok === false) return { conforms: false, violations: r.violations, error: r.error };
     return { conforms: r?.conforms === true, violations: r?.violations ?? [] };
   }
 
@@ -413,9 +508,14 @@ export class ConceptKernel {
 
   /** Cache-first; dispatch `instance.get` on miss; ingest + return the typed instance. */
   async get(id) {
-    const cached = this._store.get(id);
+    const cached = this._store.get(id);                      // L1 hit — a cache, not a fallback
     if (cached) return cached;
     const r = await this.do(OP_VERB.get, { id });
+    // v1.6.3 (R12, pgCK E-5 0.4.102): instance.get REFUSES an unresolvable id (42704, naming
+    // the accepted forms) where it once answered a confident null. A refusal is a result and
+    // it THROWS (charter §2) — null below can only ever be a pre-floor door's honest
+    // {ok:true, instance:null} miss, never a swallowed verdict.
+    if (r && r.ok === false) throw refusalError('get', r);
     return this._store.get(id) ?? r?.result ?? null;
   }
 
@@ -478,10 +578,18 @@ export class ConceptKernel {
     const applied = await this.apply(p.iri);
     if (applied && applied.ok === false) throw refusalError('govern.apply', applied);
     // v1.6.1 (R5.2 / A-6): single-actor at quorum 1 is REHEARSAL and the return value says so.
-    // Client-derived until pgCK stamps it server-side (R5.3) — the label survives the cutover.
-    const rehearsal = quorum <= 1;
+    // v1.6.3 (R9): pgCK 0.4.90 stamps it server-side — apply's success path now carries the
+    // QUORUM PAIR (approvals beside the bar it cleared) plus rehearsal and a quorumNote.
+    // The server value WINS; the client derivation survives only as the labelled fallback for
+    // a door that does not send one — the label was designed to survive exactly this cutover.
+    // An approval count without the bar it cleared is not a number.
+    const serverSaid = applied?.rehearsal != null;
+    const rehearsal = serverSaid ? applied.rehearsal : quorum <= 1;
     return { ok: !!(applied && applied.ok), proposal: p.iri, state: applied?.state,
-             epoch: applied?.epoch, rehearsal, rehearsalSource: 'client-derived', vote, applied };
+             epoch: applied?.epoch, rehearsal,
+             rehearsalSource: serverSaid ? 'server' : 'client-derived',
+             approvals: applied?.approvals, quorum: applied?.quorum,
+             quorumNote: applied?.quorumNote, vote, applied };
   }
   /** Sugar: seal a type's transition map in one governed act (single-actor by default). */
   async setTransitionMap(targetClass, map, opts = {}) { return this.govern('set_transition_map', { targetClass, map }, opts); }

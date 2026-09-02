@@ -65,5 +65,14 @@ console.log('R3.7 (A-11) — correlation: 128-bit id, verb+subject verified on r
   for (const p2 of c._pending.values()) clearTimeout(p2.timer);
   c._pending.clear();
 }
+// ── v1.6.3 R10.1 + R16.3: counts and retired caveats leave the shipped strings ──────────────
+console.log('v1.6.3 R10.1 — no refusal-set count baked into source (cache on registryDigest)');
+// The gate flattens comment line-continuations first — the first cut of this gate missed
+// '52\n// codes' and PASSED against the defect it claims to catch (build rule 6, caught here).
+const facadeFlat = facade.replace(/\n\/\/ ?/g, ' ');
+ok('no hard-coded registry count in ck.js', !/\b\d+\s+codes\b/.test(facadeFlat));
+console.log('v1.6.3 R16.3 — the phantom-epoch caveat swept from shipped strings');
+ok("no '+2 measured' / '+1 real' wording in shipped files", !facade.includes('+2 measured') && !client.includes('+2 measured') && !facade.includes('+1 real') && !client.includes('+1 real'));
+
 console.log(`\nsmoke-purge: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

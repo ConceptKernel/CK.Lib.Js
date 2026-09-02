@@ -123,5 +123,56 @@ console.log('R5.2 — govern says rehearsal, with provenance');
   ok('quorum 1 → rehearsal:true, said every time', g.rehearsal === true);
   ok("rehearsalSource labels the deriver", g.rehearsalSource === 'client-derived');
 }
+
+console.log('v1.6.3 R8.2 — onBehalfOf on frames: two spellings by frame class, never headers');
+{
+  const { k, t } = mk();
+  const frames = []; k.on({}, (fr) => frames.push(fr));
+  t.emit('result', { verb: 'instance.create', data: { onBehalfOf: 'urn:ckp:participant:obo' } });
+  t.emit('event', { verb: 'instance.create', data: { 'https://conceptkernel.org/ontology/v3.11/core#onBehalfOf': 'urn:ckp:participant:obo2' } });
+  t.emit('event', { verb: 'x', headers: { onBehalfOf: 'urn:ckp:participant:forged' }, data: {} });
+  ok('flat camelCase read from result-reply bodies', frames[0].onBehalfOf === 'urn:ckp:participant:obo');
+  ok('FULL-IRI key read from event bodies (the sealed instance verbatim)', frames[1].onBehalfOf === 'urn:ckp:participant:obo2');
+  ok('a header-borne copy is IGNORED — absence stays null (acted directly)', frames[2].onBehalfOf === null);
+}
+console.log('v1.6.3 R9 — govern() reads the quorum pair back; the server rehearsal wins');
+{
+  const { k } = mk({
+    'kernel.propose_change': () => ({ ok: true, proposal_iri: 'ckp://Proposal#2' }),
+    'kernel.vote': () => ({ ok: true }),
+    'kernel.apply': () => ({ ok: true, state: 'applied', epoch: 5, rehearsal: false, approvals: 2, quorum: 2, quorumNote: 'quorum 2 met by 2 distinct parties' }),
+  });
+  const g = await k.govern('add_class', {}, { quorum: 1 });
+  ok('server rehearsal WINS over the client derivation', g.rehearsal === false);
+  ok("rehearsalSource says 'server' when the server said", g.rehearsalSource === 'server');
+  ok('the quorum pair rides: approvals AND the bar it cleared', g.approvals === 2 && g.quorum === 2);
+  ok('quorumNote passes through verbatim', g.quorumNote === 'quorum 2 met by 2 distinct parties');
+}
+{
+  const { k } = mk({
+    'kernel.propose_change': () => ({ ok: true, proposal_iri: 'ckp://Proposal#3' }),
+    'kernel.vote': () => ({ ok: true }), 'kernel.apply': () => ({ ok: true, state: 'applied', epoch: 2 }),
+  });
+  const g = await k.govern('add_class', {});
+  ok('control: no server flag → derived, labelled client-derived (fallback survives the cutover)', g.rehearsal === true && g.rehearsalSource === 'client-derived');
+}
+console.log('v1.6.3 R9.5 — role_required mid-dance names its step, verdict verbatim (pin)');
+{
+  const { k } = mk({
+    'kernel.propose_change': () => ({ ok: true, proposal_iri: 'ckp://Proposal#4' }),
+    'kernel.vote': () => ({ ok: false, refused: true, sqlstate: '42501', error: 'role_required', hint: 'Role lacks permAction kernel.vote' }),
+  });
+  let err = null; await k.govern('add_class', {}).catch((e) => { err = e; });
+  ok('throws naming govern.vote with sqlstate + clause intact', !!err && /govern\.vote/.test(err.message) && err.sqlstate === '42501' && err.reply?.error === 'role_required');
+}
+
+
+console.log('AUDIT — namespaces are memoized, one call helper (dedup + stable identity)');
+{
+  const { k } = mk();
+  ok('k.surface === k.surface (built once, not per access)', k.surface === k.surface);
+  ok('k.clock === k.clock (built once, not per access)', k.clock === k.clock);
+}
+
 console.log(`\nsmoke-bus: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

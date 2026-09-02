@@ -147,5 +147,22 @@ let threw = false;
 try { await k.create('Task', {}); } catch { threw = true; }
 ok('after close, handle methods throw', threw === true);
 
+// ── v1.6.3 R12 (E-5, pgCK 0.4.102): get() never swallows a verdict ─────────────────────────
+console.log('v1.6.3 R12 — get(): a refusal THROWS; an honest miss stays null; cache short-circuits');
+{
+  const mem = new Map();
+  const memStore = { ingest() {}, retire() {}, get: (id) => mem.get(id) };
+  const kRef = new ConceptKernel('ckp://Kernel#t', {
+    async dispatch() { return { ok: false, refused: true, sqlstate: '42704', error: 'unknown_instance', hint: 'accepted: bare, ckp://Type#id, urn:ckp:instance:<id>' }; },
+  }, memStore, [], {});
+  let err = null; await kRef.get('nope').catch((e) => { err = e; });
+  ok('unknown_instance refusal throws verbatim (was: silent null — charter §2)', !!err && err.sqlstate === '42704' && err.reply?.error === 'unknown_instance');
+  const kMiss = new ConceptKernel('ckp://Kernel#t', { async dispatch() { return { ok: true, instance: null }; } }, memStore, [], {});
+  ok('an honest ok:true miss returns null (pre-floor doors unchanged)', (await kMiss.get('x')) === null);
+  mem.set('c1', { '@id': 'c1' });
+  const kCache = new ConceptKernel('ckp://Kernel#t', { async dispatch() { throw new Error('wire must not be touched on a cache hit'); } }, memStore, [], {});
+  ok('cache hit short-circuits (L1, not a fallback)', (await kCache.get('c1'))['@id'] === 'c1');
+}
+
 console.log(`\n${fail === 0 ? '✅ PASS' : '❌ FAIL'} — ${pass} passed, ${fail} failed`);
 process.exit(fail === 0 ? 0 : 1);

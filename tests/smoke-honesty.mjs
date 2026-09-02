@@ -183,5 +183,68 @@ console.log("T-NEW — unverified dispatch throws (id-form is the only publish)"
   ok('throws before any publish, naming the verified-bearer requirement', !!threw && /verified/i.test(String(threw?.message)));
 }
 
+
+// ── v1.6.3 R8 (C-7, pgCK 0.4.107): the FIFTH stamp — onBehalfOf, pass-through, absence is the signal ──
+console.log('R8 — onBehalfOf: fifth server-derived stamp passes through; absence = acted directly');
+{
+  const k = mkKernel(() => ({ ok: true, id: 'x', createdBy: 'urn:ckp:participant:p', sealedAtEpoch: 3, producedBy: 'urn:k', onBehalfOf: 'urn:ckp:participant:agent-for' }));
+  const w = await k.update('x', {});
+  ok('onBehalfOf surfaced verbatim, uninterpreted', w.onBehalfOf === 'urn:ckp:participant:agent-for');
+}
+{
+  const k = mkKernel(() => ({ ok: true, id: 'x', createdBy: 'urn:ckp:participant:p', sealedAtEpoch: 3, producedBy: 'urn:k' }));
+  const w = await k.update('x', {});
+  ok('absent onBehalfOf → null with the key present (acted directly, never unknown)', w.onBehalfOf === null && ('onBehalfOf' in w));
+}
+
+// ── v1.6.3 R10.3: the classifier grows the delegate seam + the not-XX rule (C-15, B7/L-7) ──
+console.log('R10.3 — outcomeOf: delegate seam (0A000) and the not-XX rule');
+{
+  const { outcomeOf } = await import('../ck.js');
+  ok("sqlstate 0A000 → 'delegated' — not refused-by-law, not served at THIS tier", outcomeOf({ ok: false, sqlstate: '0A000', error: 'verb_delegated' }) === 'delegated');
+  ok("ok:false + non-XX sqlstate WITHOUT refused → 'refusal' (anything not class XX)", outcomeOf({ ok: false, sqlstate: '42501', error: 'not_owner' }) === 'refusal');
+  ok("ok:false + XX-class sqlstate → 'fault' (XX is the only class a genuine fault carries)", outcomeOf({ ok: false, sqlstate: 'XX000', error: 'internal_error' }) === 'fault');
+  ok('control: no sqlstate, no refused → still fault (timeout shape unchanged)', outcomeOf({ ok: false, error: 'timeout' }) === 'fault');
+  ok('control: refused:true → refusal, unchanged', outcomeOf({ ok: false, refused: true, sqlstate: '22023' }) === 'refusal');
+}
+
+
+// ── v1.6.3 FINAL AUDIT (charter §2 sweep): the four reads that never joined the throwing
+// side. Reads THROW on a refusal; writes return the verdict-shaped result (T-D2) — that split
+// is the doctrine, and verify/provenance/snapshot/match were v1.6.1 leftovers on the wrong
+// side of it: a refusal rendered as verdict-unknown / raw body / [] / [] respectively.
+console.log('AUDIT — verify/provenance/snapshot/match THROW on a refusal (reads-throw doctrine)');
+{
+  const refusal = { ok: false, refused: true, sqlstate: '42704', error: 'unknown_instance' };
+  for (const [name, fn] of [
+    ['verify', (k) => k.verify('x')],
+    ['provenance', (k) => k.provenance('x')],
+    ['snapshot', (k) => k.snapshot()],
+    ['match', (k) => k.match('term')],
+  ]) {
+    const k = mkKernel(() => ({ ...refusal }));
+    let err = null; await fn(k).catch((e) => { err = e; });
+    ok(`${name}() throws the refusal verbatim (was: null-verdict/raw/[]/[])`, !!err && err.sqlstate === '42704' && err.refused === true);
+  }
+}
+console.log('AUDIT — controls: the honest shapes are unchanged');
+{
+  const k = mkKernel(() => ({ ok: true, proof_digest: 'pf:x', seq: 7 }));
+  ok('verify() ok-without-verified still null-honest', (await k.verify('x')).verified === null);
+  const ks = mkKernel(() => ({ ok: true, result: [] }));
+  ok('snapshot() honest empty stays []', Array.isArray(await ks.snapshot()) && (await ks.snapshot()).length === 0);
+  const km = mkKernel(() => ({ ok: true, result: [{ '@id': 'c1' }] }));
+  ok('match() honest candidates pass through', (await km.match('t'))[0]['@id'] === 'c1');
+}
+console.log('AUDIT — validate(): the two refusal planes are never flattened (R5.4)');
+{
+  const shacl = mkKernel(() => ({ ok: false, refused: true, sqlstate: '22023', error: 'MinCount not satisfied: section', violations: [{ path: 'section', sourceConstraintComponent: 'sh:MinCountConstraintComponent' }] }));
+  const v = await shacl.validate({ type: 'urn:x' });
+  ok('a SHACL report renders conforms:false with violations VERBATIM (unchanged)', v.conforms === false && v.violations.length === 1);
+  const proc = mkKernel(() => ({ ok: false, refused: true, sqlstate: '42704', error: 'type_must_be_iri' }));
+  let err = null; await proc.validate({ type: 'NotAnIri' }).catch((e) => { err = e; });
+  ok('a PROCEDURAL refusal THROWS — conforms:false was a manufactured verdict', !!err && err.sqlstate === '42704');
+}
+
 console.log(`\nsmoke-honesty: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
