@@ -141,7 +141,7 @@ verification belongs in the consumer's build gate, offline, against the attested
 
 | path | tier | note |
 |---|---|---|
-| `tests/smoke-*.mjs` | 0 | six suites, 151 assertions, fake dispatchers — declared, never a real door |
+| `tests/smoke-*.mjs` | 0 | 14 suites, 361 assertions, fake dispatchers — declared, never a real door |
 | `tests/wire/door-confirm.mjs` | 1 | law identity · read-only |
 | `tests/wire/door-suite.mjs` | 2 | grants + reply axis · read-only |
 | `tests/wire/door-beat.mjs` | 3 | the ladder · **destructive**, `CK_BEAT=1` guarded |

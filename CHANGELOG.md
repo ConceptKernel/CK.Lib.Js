@@ -2,6 +2,107 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.6.5] — 2026-09-04
+
+**The ladder release — the client becomes the rung where a wrong digest never leaves the seat.**
+Built against `SPEC.CK-DOOR.v1.6.5` §14 (R-34…R-39) and pgCK's `to-CKLIBJS-PASS-15` (the four-rung
+validation ladder for digest-bearing seals; *the client rung is yours: derive, never transcribe*)
+**and `PASS-16`, which arrived mid-build with the substrate's PRE/AT rungs already shipped
+(pgCK 0.4.112)** — retiring the wire-side dry-run approximation this release had drafted before
+it shipped. 14 suites, **361 passed / 0 failed**, every change RED-first. **No test in this
+release types a digest; every one is read off the door in the same run.**
+
+**Added**
+
+- **`k.adoption.recorded(iri)`** — the loader's recorded digest for a module, **before adoption**,
+  one read, zero writes, no digest sent: `instance.validate {type: core#Adoption, adopts}`
+  answers `reference.sourceRecorded` beside the SHACL report (measured: `f4ad27ce…` for `wave`
+  on a seat that had never adopted it). A door without the band answers `reference:null` and a
+  note — the door's capability, never a guess. (R25)
+- **`k.adoption.dryRun({adopts, sourceDigest?, transcribed?})`** — `instance.validate` **is** the
+  dry-run. Composes the body (`intoProject` from the seat, `intoEpoch` from `surface.check`,
+  `sourceDigest` derived from the record), passes it through, and returns a report: the door's
+  `reference` + check-keyed `warnings` verbatim, plus findings named for the census verdict they
+  predict — `module_absent` ⇒ would seal *malformed*, `target_no_graphs` ⇒ would seal *orphaned*,
+  `digest_disagrees` / `digest_underivable` / `digest_malformed`, `shape_violation`. Never throws
+  on a finding; a wire refusal throws verbatim. (R26)
+- **`k.adoption.adopt({adopts, …})`** — dry-run → seal → confirm, one gesture. A `refuse` finding
+  throws **locally** (`refused:false`, `sqlstate:null`, `localGuard:'R25'`, `findings[]`) before
+  any I/O; the seal reply's **AT band** (`reference` + `warnings`) rides on the receipt with zero
+  extra round-trips; the seat's `adoption.check` row follows as confirmation with the R17.3
+  verdict. A confirmation that cannot run never hides a landed seal. (R27)
+- **The digest rule.** A record on the door **beats** a caller's value unconditionally — a
+  disagreeing value is refused naming both, and `transcribed:true` does not override it. With no
+  record readable (an unrecorded load, pgRDF#120; or a pre-band door) the client **stops by
+  name**; the only way past is `{ sourceDigest, transcribed: true }`, which rides on the receipt
+  as `digestSource:'transcribed'` and is judged by the door at the act. Derivation, not a
+  failover: one path, and an absence is named, never worked around. (R25.2)
+- **`k.create(core#Adoption, …)` takes the same ladder.** One way through the facade, and it is
+  the checked one; `k.do('instance.create', …)` remains the raw door, by name. (R28)
+- **`k.adoption.supersede(id)`** — the repair. Reads the Adoption's **sealed `@id` off the door**
+  and cites it verbatim; a module IRI is refused locally by name (SPORE §5.1b). Measured on the
+  way here: `supersedes` is `sh:nodeKind IRI` (a bare receipt id is refused as a literal), and
+  the census joins on the exact `@id` string — a Supersession citing E-5's equally-valid
+  `urn:ckp:instance:` form **conforms, seals, verifies and supersedes nothing** (specimen
+  `supersession-1788559143211182000`). Cite what the door returned. (R32)
+- **`k.adoption.row(iri)`** — the seat's adoption row from `adoption.check`, filtered client-side
+  (the verb ignores its payload); `null` until the seat adopts. The only carrier of `sourceLoads`,
+  `drifted` and the pin planes. (R25.3)
+- **`k.adoption.census()`** (`fleet.adoptions`) and **`k.integrity()`** (`integrity.check`) —
+  the downstream rung, facaded. (R29)
+- **`k.validate()` carries two bands and folds neither**: `conforms`/`violations` (the law's
+  shape) and `reference` / `referenceWarnings` / `shapeWarnings` (the store's state; `null` for
+  any non-Adoption body or pre-band door). **A wrong digest is `conforms:true`** — and the v1.6.4
+  facade dropped `reference` and `warnings`, so it read `{conforms:true, violations:[]}`. That is
+  the defect this fixes. (R30)
+- **`writeResult` passes `reference` and `warnings` through on every write**, null-honest. (R27.3)
+- **`k.doorIdentity()` gains `lawSurface` (= `extversion`) and, when `diverged`, a `note`** naming
+  the documented lag and its cure. Measured: extversion 0.4.112 with every capability live while
+  `version()` read 0.4.111 — **a version string is not a law surface, and neither is
+  `version()`**; capability is probed by reply shape. `agreement` is passed through untouched.
+  (R31)
+
+**Fixed**
+
+- **`Dockerfile`** — the tracked header still narrated a retired doctrine ("CKP v3.9", "the
+  v3.8→v3.9 shim") and its `org.opencontainers.image.version` label read **`1.5.10`** through
+  four releases. Rewritten v3.11-and-forward, label `1.6.5`; the old file archived.
+
+**Retracted during the build** (recorded so it is not repeated)
+
+- The first draft inferred *orphaned* from seat state (`state !== 'germinated'`). Measured: a
+  `named` seat answers `targetHasGraphs:true` — a ghost project holds graphs. The door's own
+  check replaced the inference before it shipped.
+- A wire log filtered with `grep -v Warning` lost every `sh:Warning` reply it was measuring. An
+  instrument error, fixed by re-measuring.
+
+**Findings filed upstream** (`SPEC.CK-LIB-JS.v1.6.5-to-PGCK-1`)
+
+- `adoption.check` still discards its payload silently (R-35).
+- The reference band lacks `sourceLoads`; the code gate needs it before the seal (R-34.1).
+- The census joins Supersession→Adoption on the `@id` **string**, so E-5's one id vocabulary
+  does not hold in joins (R-39); and a seal-gate shape refusal arrives as `error` prose with the
+  SHACL report embedded (`sqlstate P0001`), not as `violations[]` (R-39.1).
+- `adoption.check` reports the **latest** Adoption's claim and is blind to Supersession — after
+  a wrong Adoption is superseded and a clean one stands, `row()` can still read the wrong claim
+  while the census shows only the clean row (Q-6).
+- PASS-16 §2 and the `op_has_no_projector` `teaches` text name `adoption.check` as the record to
+  derive from; for a first adoption that read is empty — the derivable one is the PRE band (C-1).
+
+**Wire-confirmed 2026-09-04 on `pgck.localhost`** (extversion **0.4.112**, `version()` 0.4.111,
+`engineIdentity diverged` — the documented lag, T1) through `tests/wire/release-confirm-1.6.5.mjs`,
+PASS-16's T1–T6 through the released surface: reads **16 / 0**; `CK_BEAT=1` **24 / 0 / 2
+skipped**. T2 wrong digest → `conforms:true` + `sourceDigestMatch:false` + one check-keyed
+warning · T3 the door-read digest → all three reference fields true, zero warnings · T4 dangling
+target → `targetHasGraphs:false` · T5 a wrong digest sealed through the **raw** door →
+`ok:true` **and** `sourceDigestMatch:false` in the same reply, then superseded through the
+facade and gone from the census · the clean `adopt(wave)` derived off the door →
+`digestSource:'recorded'`, AT band all-true, confirmation **`sourceDigestMatch:true · sourceLoads
+1 → verified`** — the first real value of that flag this kit has measured (v1.6.4 §13.6 left it
+synthesised) · T6 `adopt_module` refused `op_has_no_projector` with a hint routing to
+`core#Adoption` + `instance.validate`. Bench left with one clean adoption of `wave` into
+`ck-lib-js` as the working state; every wrong or duplicate one superseded in-run or by hand.
+
 ## [1.6.4] — 2026-09-04
 
 **The measured release — PASS-14 driven back through the client with a second and third bearer,

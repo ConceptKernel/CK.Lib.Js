@@ -1,20 +1,19 @@
-# CK.Lib.Js v1.5.0 OCI Bundle — Static Artifact (dispatch-only, vendored)
-# v1.5.0: the dispatch-only concept-kernel surface aligned to CKP v3.9 Critical Isolation. What ships is
-# three ESM modules — `ck.js` (L2 facade: CK.activate → ConceptKernel handle, op→verb table to
-# instance.*), `ck-store.js` (CKStore typed-instance cache — no quads, no RDF), and `ck-client.js` (the
-# CKClient dispatch transport over the current per-verb wire via the v3.8→v3.9 shim) — plus the vendored
-# NATS transport (nats.ws + @msgpack/msgpack) under vendor/ as self-contained browser ESM bundles.
-# ck-client.js imports ./vendor/* — there is NO runtime CDN fetch (esm.sh removed), so the bundle is
-# air-gapped and the supply-chain vector stays closed (built on the v1.4.2 vendored base). The client
-# carries no RDF, no quad store, no SPARQL, no query engine — it authenticates and dispatches typed
-# payloads, nothing else crosses (v3.9 §0.1).
-# Single target: static folder mount (ckp:static designation)
-# Files land at image root so consumers can `COPY --from=cklib_source / dest/`
-# directly per SPEC.OCI.BUNDLE.v0.3 — declarable as either `static_web[]` (v0.2-compatible,
-# routed) or `layer_sources[]` (v0.3 additive merge) in a downstream `bundle.yaml`.
+# CK.Lib.Js OCI bundle — static artifact, vendored, air-gapped.
 #
-# No npm install, no runtime CDN: nats.ws + @msgpack/msgpack are bundled into vendor/*.js at build time
-# (esbuild), so the air-gapped bundle has zero external runtime dependencies.
+# What ships: three ESM modules — `ck.js` (the facade: CK.activate → ConceptKernel handle, every
+# operation compiling to one governed dispatch through one door), `ck-client.js` (the transport:
+# NATS-over-WebSocket with a verified bearer, subject grammar per SPEC.CK-DOOR), `ck-store.js` (the
+# typed-instance cache) — plus the vendored NATS transport (nats.ws + @msgpack/msgpack) under
+# vendor/ as self-contained browser ESM bundles. ck-client.js imports ./vendor/* only: no runtime
+# CDN fetch, no npm install, zero external runtime dependencies. The client carries no RDF, no quad
+# store, no query engine — it authenticates and dispatches typed payloads; all compute is the
+# substrate's (v3.11-and-forward; see SPEC.CK-DOOR for the contract).
+#
+# Single target: static folder mount. Files land at image root so consumers can
+# `COPY --from=cklib_source / dest/` and serve them at the door's own `/cklib/` route (same
+# origin as the kernel, version-affine with the substrate behind it).
+#
+# The image version label is bumped with every release (PROVENANCE.md, "Cutting a release").
 
 FROM scratch
 
@@ -23,8 +22,8 @@ COPY vendor /vendor
 COPY LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
-LABEL org.opencontainers.image.description="CKP v3.9 dispatch-only concept-kernel JS client (vendored, air-gapped) — static folder mount artifact"
-LABEL org.opencontainers.image.version="1.5.10"
+LABEL org.opencontainers.image.description="Concept Kernel JS client — one governed dispatch through one door, verified identity, vendored and air-gapped (v3.11-and-forward)"
+LABEL org.opencontainers.image.version="1.6.5"
 LABEL org.opencontainers.image.source="https://github.com/ConceptKernel/CK.Lib.Js"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.designation="ckp:static"

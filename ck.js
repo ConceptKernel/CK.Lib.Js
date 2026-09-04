@@ -19,7 +19,8 @@ import CKStore from './ck-store.js';
 // unverifiable — including ck_doctor's, which reported "1.5.10" on the same line as the v1.5.11 digest
 // it had just computed. A label that lives beside the bytes drifts from them; one that lives IN the
 // bytes cannot. Pinned to package.json by tests/smoke-ck-client.mjs, so the two can never disagree.
-export const VERSION = '1.6.4';
+export const VERSION = '1.6.5';
+const CORE_NS = 'https://conceptkernel.org/ontology/v3.11/core#';   // v3.12 root keeps the v3.11 core ns (measured in core.ttl)
 
 /** Normalize a kernel name or URN to the canonical `ckp://Kernel#<Name>` form. */
 export function normalizeKernel(kernel) {
@@ -191,6 +192,14 @@ function writeResult(reply) {
     // participant. It says WHO WAS ACTED FOR, never what did the acting (processRef/
     // executingHost stay unfilled — the Run model-identity gap is not closed by this stamp).
     onBehalfOf: reply.onBehalfOf ?? null,
+    // v1.6.5 (R27.3, PASS-16 §1.2): THE AT BAND. An Adoption seal reply carries `reference`
+    // {sourceDigestMatch, sourceRecorded, moduleResolves, targetHasGraphs} and check-keyed
+    // `warnings[]` — THE SEAL STANDS either way (B4), and a caller reading its own receipt knows
+    // at the act. Passed through on EVERY write, null-honest when absent: only Adoption seals
+    // carry `reference` today, but any seal may carry warnings, and dropping them was the lie
+    // the ck-traps entry "validate can affirm a body that create then warns about" describes.
+    reference: reply.reference ?? null,
+    warnings: Array.isArray(reply.warnings) ? reply.warnings : null,
     seq: reply.seq,
   };
 }
@@ -364,6 +373,11 @@ export class ConceptKernel {
     return { declared, routed, unsealed, gap: routed.length - declared.length };
   }
 
+  /** v1.6.5 (R29): the seat's ledger health — `integrity.check`, verbatim. Measured 2026-09-04 @
+   *  0.4.111: healthy:false with findings naming Adoptions whose claimed digest no sealed Module
+   *  vouches for. Same _nsCall contract; a refusal throws. */
+  async integrity(payload = {}) { return this._nsCall('integrity.check')(payload); }
+
   /** v1.6.1 (R4.2 / N-2, N-3): the read-only checker surface, learnable BEFORE writing.
    *  `declared({type})` is the property contract; `refusals()` the closed refusal set. */
   /** One refusal-throwing call shape for every read-namespace verb (surface.* and clock.*) —
@@ -424,8 +438,19 @@ export class ConceptKernel {
     const r = await this.do('surface.check', {});
     if (r && r.ok === false) throw refusalError('surface.check', r);
     const e = r?.engineIdentity ?? {};
-    return { state: e.state ?? null, version: e.version ?? null, buildId: e.build_id ?? null,
-             extversion: e.extversion ?? null, agreement: e.agreement ?? null };
+    const out = { state: e.state ?? null, version: e.version ?? null, buildId: e.build_id ?? null,
+                  extversion: e.extversion ?? null, agreement: e.agreement ?? null,
+                  // v1.6.5 (R31, PASS-16 §0): THE LAW SURFACE IS extversion — never version(), and
+                  // never the version string. Measured 2026-09-04: extversion 0.4.112 with every
+                  // 0.4.112 capability LIVE while version() read 0.4.111 (the loaded .so trails until
+                  // a natural restart). `diverged` is the documented lag, rendered with its cure —
+                  // not an error, not 0.4.111. Capability is probed by REPLY SHAPE (validate's
+                  // `reference`), never gated on either string. `agreement` is passed through
+                  // untouched: reporting the lag is not softening it.
+                  lawSurface: e.extversion ?? null, note: null };
+    if (out.state === 'diverged') out.note =
+      `extversion ${out.extversion} is the law surface in force; version() ${out.version} is the loaded .so and trails until a natural restart — the documented lag, not a fault (pgCK PASS-16 §0). Never gate on version() or wait for agreement; probe capability by reply shape.`;
+    return out;
   }
 
   /** v1.6.3 (R11): the clock surface — three verbs, zero interpretation, one rendered limit.
@@ -494,6 +519,75 @@ export class ConceptKernel {
   get adoption() {
     return this._adoptionNS ??= {
       check: this._nsCall('adoption.check'),
+      /** v1.6.5 (R29): the census — the DOWNSTREAM rung `dryRun()` mirrors word for word. */
+      census: this._nsCall('fleet.adoptions'),
+      /** v1.6.5 (R25.1, PASS-15 §3.1 / PASS-16 §1): THE LOADER RECORD for one module IRI, readable
+       *  BEFORE adoption — one read, zero writes, no digest sent.
+       *
+       *  MEASURED 2026-09-04 @ extversion 0.4.112: `instance.validate {type: core#Adoption, adopts}`
+       *  answers `reference.sourceRecorded` (sha256 of the bytes the parser consumed, pgRDF#118)
+       *  for a module this seat has NEVER adopted — the reference band is computed beside the
+       *  SHACL report, independent of `conforms`. That is the pre-adoption read PASS-15 assumed
+       *  and 0.4.111 lacked (CK-DOOR R-34, met at 0.4.112 through this band). `adoption.check`
+       *  carries the same column but only for modules already adopted into the acting project
+       *  (payload-blind, R-35) — it stays the CONFIRMATION read (sourceLoads, drift, both pin
+       *  planes): see `row()`.
+       *
+       *  Returns `{ module, moduleResolves, sourceRecorded, reference }` from the band, verbatim.
+       *  `moduleResolves:false` is absence (the census's malformed class); `sourceRecorded:null` on
+       *  a resolving module is the pgRDF#120 boundary (an unrecorded load), never "fine". A door
+       *  WITHOUT the band (pre-0.4.112) answers `reference:null` + a note — the caller sees the
+       *  door's capability, never a guess, and nothing is read from a second source. */
+      recorded: async (adopts) => {
+        if (!adopts) throw new Error('adoption.recorded: `adopts` (the module graph IRI, e.g. urn:ckp:module:wave) is required and has no default');
+        const r = await this.validate({ type: `${CORE_NS}Adoption`, adopts });
+        if (!r.reference) return { module: adopts, moduleResolves: null, sourceRecorded: null, reference: null,
+          note: 'this door answered no reference band on instance.validate — a pre-0.4.112 law surface, where the loader record is unreadable before adoption (CK-DOOR R-34). Probe capability by reply shape, never by version string.' };
+        return { module: adopts, moduleResolves: r.reference.moduleResolves ?? null,
+                 sourceRecorded: r.reference.sourceRecorded ?? null, reference: r.reference };
+      },
+      /** v1.6.5 (R25.3): the seat's ADOPTION ROW for one module — `adoption.check`, filtered
+       *  client-side because the verb is payload-blind (R-35). Null before this seat adopts it.
+       *  Carries what the reference band does not: `sourceLoads`, `drifted`, both pin planes. */
+      row: async (adopts) => {
+        if (!adopts) throw new Error('adoption.row: `adopts` (the module graph IRI) is required and has no default');
+        const r = await this.adoption.check();
+        const rows = Array.isArray(r?.modules) ? r.modules : [];
+        return rows.find((m) => m && m.module === adopts) ?? null;
+      },
+      /** v1.6.5 (R32, PASS-16 T5): the repair half of the cure — a core#Supersession citing the
+       *  Adoption's SEALED @id. Never the module IRI: the door refuses that form with misdirecting
+       *  text (SPORE §5.1b, known), so it is refused HERE by name first. Measured: the declared
+       *  shape needs only `supersedes` (intoProject optional). */
+      supersede: async (adoptionId) => {
+        this._assertOpen();
+        if (!adoptionId) throw new Error("adoption.supersede: the Adoption's sealed @id (the receipt's .urn / .id) is required and has no default");
+        if (/^urn:ckp:module:/.test(String(adoptionId))) {
+          const e = new Error(`adoption.supersede: ${adoptionId} is a MODULE IRI — a Supersession cites the ADOPTION's sealed @id (the receipt's .urn / .id), never the module. The door refuses the module form with misdirecting text (SPORE §5.1b, known); refused here by name instead.`);
+          e.refused = false; e.sqlstate = null; e.localGuard = 'R32'; throw e;
+        }
+        // MEASURED 2026-09-04 @ 0.4.112, twice: (1) `supersedes` carries sh:nodeKind IRI — a BARE id
+        // (what a create receipt's `id` holds) is refused as a literal; (2) the census (`fleet.adoptions`)
+        // joins a Supersession to its Adoption on the EXACT STRING of the sealed @id (`ckp://Adoption#<id>`),
+        // so a Supersession citing E-5's `urn:ckp:instance:<id>` form CONFORMS, SEALS, VERIFIES — and
+        // supersedes nothing (specimen supersession-1788559143211182000). The only honest cite is the
+        // sealed @id READ OFF THE DOOR, verbatim — derive, never compose (the digest rule, applied to ids).
+        // One read; an unresolvable id is E-5's 42704 refusal, thrown verbatim.
+        const g = await this.do(OP_VERB.get, { id: adoptionId });
+        if (g && g.ok === false) throw refusalError('adoption.supersede', g);
+        const sealed = g?.instance?.body?.['@id'] ?? g?.instance?.['@id'] ?? g?.result?.body?.['@id'] ?? g?.result?.['@id'] ?? null;
+        if (!sealed) {
+          const e = new Error(`adoption.supersede: the door answered instance.get for ${adoptionId} without a sealed @id — nothing to cite. A Supersession must name the Adoption's sealed @id verbatim (the census joins on that exact string); this client composes none.`);
+          e.refused = false; e.sqlstate = null; e.localGuard = 'R32'; throw e;
+        }
+        const w = writeResult(await this.do(OP_VERB.create, { type: `${CORE_NS}Supersession`, supersedes: sealed }));
+        return Object.assign(w, { supersedes: sealed });
+      },
+      /** v1.6.5 (R26): the dry-run — a REPORT in the census's own vocabulary. Never throws on a
+       *  finding; throws only when a read is refused at the wire. See _adoptionDryRun. */
+      dryRun: (opts) => this._adoptionDryRun(opts),
+      /** v1.6.5 (R27): dry-run → seal → check, one gesture. See _adopt. */
+      adopt: (opts) => this._adopt(opts),
       /** R17.3 — the verify-then-load gate, as a STRUCTURAL verdict, not a boolean dressed as
        *  authority. Reads flags the substrate sent; composes no new fact.
        *    adopt by digest → sourceDigestMatch === true AND sourceLoads === 1
@@ -514,6 +608,136 @@ export class ConceptKernel {
         return { verdict, sourceDigestMatch, sourceLoads, reasons };
       },
     };
+  }
+
+  /** v1.6.5 (R26, PASS-15 §3.2 → PASS-16 §2) — THE DRY-RUN. `instance.validate` IS the dry-run
+   *  (0.4.112 PRE): the composed Adoption body goes through it and the reply's `reference` +
+   *  check-keyed `warnings` come back verbatim. The wire-side approximation PASS-15 asked for was
+   *  retired before it shipped — this facade keeps its result shape while the door does the work.
+   *
+   *  FINDINGS are the client's closed vocabulary over the door's own checks, each carrying the
+   *  door's prose where it has some, and named for the DOWNSTREAM census verdict it predicts:
+   *    module_absent     ← reference.moduleResolves:false   ⇒ would seal `malformed`
+   *    target_no_graphs  ← reference.targetHasGraphs:false  ⇒ would seal `orphaned`
+   *    digest_*          ← the R25.2 digest rule            ⇒ sourceDigestMatch false/null after
+   *    shape_violation   ← conforms:false on the COMPOSED body ⇒ the seal would be REFUSED (the
+   *                        SHACL plane — the other plane, stated, never folded)
+   *    module_drifted · source_reloaded (warn) ← adoption.check row, on re-adoption
+   *  RETRACTED (measured 2026-09-04): v1.6.5's first draft inferred `orphaned` from seat state
+   *  (`state !== 'germinated'`); this `named` seat answers targetHasGraphs:TRUE — a ghost project
+   *  holds graphs. The door's check replaces the inference. Nothing here is a client verdict.
+   *
+   *  SCOPE IS THE ACTING SEAT, stated: intoProject is DERIVED from the handle's kernel (the seat
+   *  the caller chose at activate — not a default constant) and intoEpoch from surface.check.
+   *  Adopting into a FOREIGN project is the raw door's job (k.do); the census judges it after.
+   *
+   *  R25.2 — THE DIGEST RULE, in order: a malformed value refuses before any I/O; a supplied value
+   *  is validated as-composed and the door's sourceDigestMatch decides (false ⇒ refuse naming the
+   *  record; `transcribed:true` does NOT override a record); no value ⇒ ONE probe read of the
+   *  loader record (recorded()) derives it, and the composed body is validated again so the PRE
+   *  verdict is on the exact bytes that will be sealed; no record ⇒ stop by name — the ONLY way
+   *  past is a value the caller spells as transcribed. Derivation, not a failover (SPEC §0.5.1). */
+  async _adoptionDryRun({ adopts, sourceDigest = null, transcribed = false } = {}) {
+    this._assertOpen();
+    if (!adopts) throw new Error('adoption.dryRun: `adopts` (the module graph IRI, e.g. urn:ckp:module:wave) is required and has no default');
+    const findings = [];
+    const f = (code, severity, message, check = null, read = 'instance.validate') => findings.push({ code, severity, check, message, read });
+    const digest = { derived: null, supplied: sourceDigest ?? null, source: null, agrees: null };
+    if (digest.supplied != null && !/^[0-9a-f]{64}$/.test(String(digest.supplied))) {
+      f('digest_malformed', 'refuse', `sourceDigest ${JSON.stringify(digest.supplied)} is not 64 lowercase hex — AdoptionShape's own pattern (^[0-9a-f]{64}$, declared law), applied before any I/O. A truncated or padded digest is a fabricated pin.`, 'sourceDigestMatch', 'local');
+      return { ok: false, findings, body: null, seat: null, reference: null, warnings: null, conforms: null, violations: null, row: null, digest };
+    }
+    // Reads — each through its facade: a wire REFUSAL throws verbatim; no finding stands in for one.
+    const seatR = await this.surface.check();
+    const seat  = { kernel: seatR?.kernel ?? this.name, state: seatR?.state ?? null, epoch: seatR?.epoch ?? null,
+                    intoProject: `urn:ckp:project:${this.name}` };
+    const row   = await this.adoption.row(adopts);
+    const base  = { type: `${CORE_NS}Adoption`, adopts, intoProject: seat.intoProject, intoEpoch: seat.epoch };
+    let pre;
+    if (digest.supplied != null) {
+      pre = await this.validate({ ...base, sourceDigest: digest.supplied });
+      const ref = pre.reference;
+      if (ref && ref.sourceDigestMatch === true)       { digest.derived = digest.supplied; digest.source = 'recorded'; digest.agrees = true; }
+      else if (ref && ref.sourceDigestMatch === false) { digest.agrees = false; }
+      else if (transcribed === true)                   { digest.derived = digest.supplied; digest.source = 'transcribed'; }
+    } else {
+      const rec = await this.adoption.recorded(adopts);
+      if (rec.sourceRecorded) { digest.derived = rec.sourceRecorded; digest.source = 'recorded'; }
+      pre = await this.validate(digest.derived ? { ...base, sourceDigest: digest.derived } : base);
+    }
+    const ref = pre?.reference ?? null;
+    const doorSays = (check) => (pre?.warnings ?? []).find((w) => w && w.check === check)?.resultMessage ?? null;
+    if (ref) {
+      if (ref.moduleResolves === false) f('module_absent', 'refuse',
+        doorSays('moduleResolves') ?? `${adopts} names no non-empty graph on this door — sealed, this adoption would compose NOTHING (the census's malformed class).`, 'moduleResolves');
+      if (ref.targetHasGraphs === false) f('target_no_graphs', 'refuse',
+        doorSays('targetHasGraphs') ?? `${seat.intoProject} holds no graphs on this door — the adoption would be reachable by no composed surface (the census's orphaned class).`, 'targetHasGraphs');
+    } else {
+      f('reference_unavailable', 'warn', 'this door answered no reference band on instance.validate (pre-0.4.112 law surface) — module presence and target graphs were not checked by the door. Probe capability by reply shape, never by version string.', null);
+    }
+    if (digest.agrees === false) f('digest_disagrees', 'refuse',
+      (doorSays('sourceDigestMatch') ?? `the loader recorded ${ref?.sourceRecorded} for ${adopts}; you supplied ${digest.supplied}.`) +
+      ` A record beats a transcription unconditionally (transcribed:true does not override it) — the PASS-15 §1 incident, caught before the wire. Drop the value and the record is used.`, 'sourceDigestMatch');
+    if (digest.derived == null && digest.agrees !== false) {   // a DISAGREEING value is derivable — it is wrong, not unreadable
+      if (!ref) f('digest_underivable', 'refuse',
+        `this door exposes no loader record before adoption (no reference band — pre-0.4.112; CK-DOOR R-34). A transcribed digest is not constructible through adopt() unless you say so: pass { sourceDigest, transcribed: true } and it is checked against the door right after the seal.`, 'sourceDigestMatch');
+      else if (ref.moduleResolves === false) f('digest_underivable', 'refuse',
+        `nothing is recorded for ${adopts} because no graph by that IRI exists here — place the module first (proximity is not adoption).`, 'sourceDigestMatch');
+      else f('digest_underivable', 'refuse',
+        `${adopts} is placed on this door but its load was never recorded (sourceRecorded null — pgRDF#120: only the turtle funnel records; staged/bulk/n-quads loads do not). Nothing on the door can vouch for a digest. Pass { sourceDigest, transcribed: true } to say YOU are vouching — and expect sourceDigestMatch:null after the seal, which for anything loading code is exactly false.`, 'sourceDigestMatch');
+    }
+    if (digest.source === 'transcribed') f('digest_unverifiable', 'warn',
+      `sourceDigest ${digest.supplied} is TRANSCRIBED — the door holds no record to check it against (sourceDigestMatch null). The receipt will say digestSource:'transcribed'; for anything loading code treat this exactly like false.`, 'sourceDigestMatch');
+    if (digest.derived && pre && pre.conforms === false) f('shape_violation', 'refuse',
+      `the composed body does not conform to AdoptionShape — the seal would be REFUSED on the SHACL plane (not the reference plane): ` +
+      (pre.violations ?? []).map((v) => `${String(v.resultPath ?? '').split('#').pop()}: ${v.resultMessage}`).join(' · '), null);
+    if (row?.drifted === true) f('module_drifted', 'warn',
+      `${adopts} has drifted from its first-composition pin on this door (adoption.check drifted:true) — adopting now pins the MOVED bytes. A legitimate update arrives as a new Adoption + Supersession; say which this is.`, null, 'adoption.check');
+    if (row && row.sourceLoads != null && row.sourceLoads > 1) f('source_reloaded', 'warn',
+      `${adopts} was loaded ${row.sourceLoads} times on this door — whole-graph byte identity no longer holds, and for CODE the R17.3 gate will refuse.`, null, 'adoption.check');
+    const ok = !findings.some((x) => x.severity === 'refuse');
+    return { ok, findings, body: digest.derived ? { ...base, sourceDigest: digest.derived } : null, seat,
+             reference: ref, warnings: pre?.warnings ?? null, conforms: pre?.conforms ?? null, violations: pre?.violations ?? null,
+             row, digest };
+  }
+
+  /** v1.6.5 (R27, PASS-15 §3.3 / PASS-16 §2) — ADOPT: dry-run → seal → confirm, one gesture, no step
+   *  skippable. A `refuse` finding throws LOCALLY in R24's shape (refused:false, sqlstate:null — no
+   *  server refused anything; this client declined to send). The seal reply carries the AT band
+   *  (`reference` + `warnings`, via writeResult) so reference health is on the receipt with zero
+   *  extra round-trips; the post-seal `adoption.check` row is CONFIRMATION (sourceLoads, drift, pin
+   *  planes) and yields the R17.3 verdict. A WIRE refusal at the seal returns the verdict-shaped
+   *  writeResult (T-D2) and attempts no confirmation. R27.2 — a confirmation that cannot run
+   *  NEVER hides a seal that landed: the receipt keeps the id and carries check:null + checkError. */
+  async _adopt(opts = {}) {
+    const dry = await this._adoptionDryRun(opts);
+    if (!dry.ok) {
+      const refuse = dry.findings.filter((x) => x.severity === 'refuse');
+      const e = new Error(
+        `adopt: refusing to originate an Adoption of ${opts.adopts} — ` +
+        refuse.map((x) => `[${x.code}] ${x.message}`).join(' · ') +
+        ` The door would have SEALED it (adoption.check reports and does not gate — CK-DOOR R-26, deliberate); ` +
+        `this client is the gate the substrate deliberately is not (CK-DOOR R-36).`);
+      e.refused = false; e.sqlstate = null; e.localGuard = 'R25'; e.findings = dry.findings; e.dryRun = dry;
+      throw e;
+    }
+    const w = writeResult(await this.do(OP_VERB.create, dry.body));
+    if (!w.ok) return w;                                        // T-D2: verdict-shaped, no confirmation
+    Object.assign(w, { digestSource: dry.digest.source, dryRun: dry, check: null, checkError: null });
+    try {
+      const row = await this.adoption.row(opts.adopts);
+      if (row) {
+        const v = this.adoption.loadable(row);
+        w.check = { sourceDigestMatch: row.sourceDigestMatch ?? null, sourceRecorded: row.sourceRecorded ?? null,
+                    sourceLoads: row.sourceLoads ?? null, drifted: row.drifted ?? null, verdict: v.verdict, reasons: v.reasons };
+      } else {
+        w.checkError = `adoption.check answered after the seal but lists no row for ${opts.adopts} — the seal LANDED (id ${w.id}); its verdict is UNKNOWN. Re-read k.adoption.row() before loading anything.`;
+      }
+    } catch (e) {
+      w.checkError = `post-seal adoption.check did not answer (${e.message}) — the seal LANDED (id ${w.id}); its verdict is UNKNOWN until k.adoption.row() answers. Never retry the seal.`;
+    }
+    if (w.id) this._store.ingest({ '@id': w.id, '@type': dry.body.type, ...dry.body });
+    return makeRef(this, w);
   }
 
   /** `do` + honest-fresh polling for derived reads (pgCK#4 contract). While the reply is the honest
@@ -574,6 +798,10 @@ export class ConceptKernel {
   // ── Named conveniences (sugar over `do`, mapped via OP_VERB) ────────────────
 
   async create(type, body = {}) {
+    // v1.6.5 (R28): ONE way to compose an Adoption through this facade, and it is the checked one.
+    // k.do('instance.create', …) remains the raw door, exactly as it bypasses R24 — a pattern guard
+    // at the facade is never a claim about the wire.
+    if (type === 'https://conceptkernel.org/ontology/v3.11/core#Adoption') return this._adopt(body);
     // Uniform create-by-declared-type. pgCK routes instance.create → ckp.create_typed when {type} is
     // top-level with NO `task` key, sealing against the kernel's OWN declared SHACL shape (sh:targetClass =
     // type; each caller field local-name → declared property IRI). `type` MUST be the declared class IRI;
@@ -653,8 +881,21 @@ export class ConceptKernel {
     // none, and rendering it conforms:false manufactures a verdict the gate never reached — it
     // THROWS instead, clause intact. (No sourceConstraintComponent ⇒ not SHACL.)
     if (r?.ok === false && !Array.isArray(r.violations)) throw refusalError('validate', r);
-    if (r?.ok === false) return { conforms: false, violations: r.violations, error: r.error };
-    return { conforms: r?.conforms === true, violations: r?.violations ?? [] };
+    // v1.6.5 (R30, PASS-16 §2): TWO WARNING BANDS, never folded. `reference` (core#Adoption bodies
+    // only, extversion ≥ 0.4.112) answers the STORE's state — moduleResolves / targetHasGraphs /
+    // sourceDigestMatch / sourceRecorded — beside the SHACL report, which answers the LAW's shape.
+    // `conforms` stays SHAPE-ONLY: measured 2026-09-04, a WRONG digest is conforms:true with
+    // reference.sourceDigestMatch:false, and the v1.6.4 facade dropped both fields — a consumer
+    // reading conforms:true would have loaded the wrong module. A warnings[] entry WITH a `check`
+    // key is the reference band; WITHOUT one it is SHACL guidance. Both verbatim; the two filtered
+    // views are conveniences over the same array, never interpretations. Null-honest when the door
+    // has no band: the caller sees the door's capability, never a guess.
+    const warnings = Array.isArray(r?.warnings) ? r.warnings : null;
+    const bands = { referenceWarnings: warnings ? warnings.filter((w) => w && Object.prototype.hasOwnProperty.call(w, 'check')) : null,
+                    shapeWarnings:     warnings ? warnings.filter((w) => !(w && Object.prototype.hasOwnProperty.call(w, 'check'))) : null };
+    const reference = r?.reference ?? null;
+    if (r?.ok === false) return { conforms: false, violations: r.violations, error: r.error, warnings, reference, ...bands };
+    return { conforms: r?.conforms === true, violations: r?.violations ?? [], warnings, reference, ...bands };
   }
 
   // ── Reads without a query language (named, typed, grantable — §4.5) ─────────

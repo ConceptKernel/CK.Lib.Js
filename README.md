@@ -35,6 +35,7 @@ await tasks.verify(t.id);                        // { verified: true, proof_dige
 | **Prove** | `verify` `provenance` — the digest and the full chain, for any URN, any time |
 | **Govern** | `propose` `vote` `apply` — the schema and verb set evolve by governance, not migration |
 | **Discover** | `affordances()` — what *this identity* may do *here*. Nothing else is callable |
+| **Adopt** | `adoption.recorded` `dryRun` `adopt` `supersede` — a module's digest is read off the door, never typed; the door's own dry-run and seal verdicts ride on the receipt |
 
 Every operation compiles to one governed dispatch through one door.
 
