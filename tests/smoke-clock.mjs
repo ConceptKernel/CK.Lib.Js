@@ -72,5 +72,24 @@ try {
   ok('pre-rename ckp:epoch also passes through (fenced history; emitter follows the LOADED law)', g2['https://conceptkernel.org/ontology/v3.11/core#epoch'] === 2);
 } catch (e) { ok(`germination stamp pass-through (threw: ${e.message})`, false); }
 
+console.log('R23 (v1.6.4) — signal.boundary\'s payload contract is written down, and NOT enforced locally');
+try {
+  const { readFile } = await import('node:fs/promises');
+  const src = await readFile(new URL('../ck.js', import.meta.url), 'utf8');
+  const doc = src.slice(src.indexOf('signal.boundary — ONE hash-chained'), src.indexOf('boundary: this._nsCall'));
+  ok('the doc names all three keys: about · dwellMillis · events (PASS-14 §6 documented the semantics without them)',
+     doc.length > 0 && /\babout\b/.test(doc) && /\bdwellMillis\b/.test(doc) && /\bevents\b/.test(doc));
+} catch (e) { ok(`boundary contract documented (threw: ${e.message})`, false); }
+try {
+  const calls = [];
+  const k2 = new ConceptKernel('ckp://Kernel#t', {
+    async dispatch(verb) { calls.push(verb); return { ok: false, refused: true, sqlstate: '22004', error: 'missing_param', hint: 'signal.boundary needs {about: <concept IRI>, dwellMillis, events}' }; },
+  }, store, [], {});
+  let err = null; await k2.clock.boundary({}).catch((e) => { err = e; });
+  ok('an incomplete payload is DISPATCHED, not locally pre-empted — the substrate hint beats any the client would invent',
+     calls.length === 1 && calls[0] === 'signal.boundary');
+  ok('the substrate hint reaches the caller verbatim', !!err && /about.*dwellMillis.*events/.test(err.reply?.hint ?? ''));
+} catch (e) { ok(`no local requiredness check (threw: ${e.message})`, false); }
+
 console.log(`\nsmoke-clock: ${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

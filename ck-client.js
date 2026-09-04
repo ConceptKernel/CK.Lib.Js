@@ -760,7 +760,7 @@ class CKClient {
 if (typeof window !== 'undefined') window.CKClient = CKClient;
 // Self-identifying: the door serves ck-client.js separately, so a consumer may hold this file
 // without ck.js. Pinned equal to ck.js VERSION and package.json by the smoke suite.
-const VERSION = '1.6.3';
+const VERSION = '1.6.4';
 
 export { CKClient, VERSION, msgpackEncode, msgpackDecode };
 export default CKClient;

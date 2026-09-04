@@ -19,7 +19,7 @@ import CKStore from './ck-store.js';
 // unverifiable — including ck_doctor's, which reported "1.5.10" on the same line as the v1.5.11 digest
 // it had just computed. A label that lives beside the bytes drifts from them; one that lives IN the
 // bytes cannot. Pinned to package.json by tests/smoke-ck-client.mjs, so the two can never disagree.
-export const VERSION = '1.6.3';
+export const VERSION = '1.6.4';
 
 /** Normalize a kernel name or URN to the canonical `ckp://Kernel#<Name>` form. */
 export function normalizeKernel(kernel) {
@@ -178,6 +178,12 @@ function writeResult(reply) {
     createdBy: reply.createdBy ?? null,
     sealedAtEpoch: reply.sealedAtEpoch ?? null,
     producedBy: reply.producedBy ?? null,
+    // v1.6.4 (R24.1): ownedBy joins the pass-through — and it is the ODD ONE OUT. The other
+    // stamps are server-derived and a forged value is stripped; `ownedBy` is measured
+    // CLIENT-ASSERTED at create (2026-09-04: a forged urn:ckp:participant:00000000-… sealed
+    // verbatim). Surfacing it is how a caller can SEE who a row claims to belong to, since the
+    // door does not decide it. Null-honest when absent, like every other stamp.
+    ownedBy: reply.ownedBy ?? null,
     conformsToShape: reply.conformsToShape ?? null,
     // v1.6.3 (R8.3): ABSENCE IS THE SIGNAL — null means the participant acted directly.
     // The substrate never stamps "on behalf of myself"; this client never synthesises one,
@@ -335,6 +341,29 @@ export class ConceptKernel {
     return r;
   }
 
+  /** v1.6.4 (R18, PASS-14 C-3): capability is a TWO-ARRAY answer, and `affordances: []` is not
+   *  "this kernel has no capabilities".
+   *
+   *  Measured 2026-09-04 on pgck.localhost: a kernel germinated after the last boot answers
+   *  `affordances: []` with **40 verbs in `unsealed`**. Germination does not seal affordances
+   *  and the backfill is boot-only, so the LEDGER is empty while the ROUTER is full. Reading
+   *  only the first array reports 40 routed verbs as an absence.
+   *
+   *  Dispatched fresh rather than read off activation state: `[]` is an answer about THIS
+   *  moment, and the boot backfill can change it under a long-lived handle.
+   *
+   *  RENDERING RULE (R18.3): never gate capability on `declared.length` alone. With
+   *  `declared 0 / routed 40` the honest rendering is "declared: none yet · routed: 40" — the
+   *  #56 declared/routed gap made visible, never mistaken for absence. */
+  async capabilities() {
+    const r = await this.do('affordances', {});
+    if (r && r.ok === false) throw refusalError('affordances', r);
+    const declared = Array.isArray(r?.affordances) ? r.affordances : [];
+    const unsealed = Array.isArray(r?.unsealed) ? r.unsealed : [];
+    const routed = [...new Set([...declared, ...unsealed])];
+    return { declared, routed, unsealed, gap: routed.length - declared.length };
+  }
+
   /** v1.6.1 (R4.2 / N-2, N-3): the read-only checker surface, learnable BEFORE writing.
    *  `declared({type})` is the property contract; `refusals()` the closed refusal set. */
   /** One refusal-throwing call shape for every read-namespace verb (surface.* and clock.*) —
@@ -357,7 +386,46 @@ export class ConceptKernel {
       declared: this._nsCall('surface.declared'),
       unshaped: this._nsCall('surface.unshaped'),
       grounding: this._nsCall('surface.grounding'),
+      /** v1.6.4 (R20) — the ONLY honest cache key for a surface-derived read.
+       *  `surface.*` answers about the COMPOSED SURFACE OF THE ACTING KERNEL, not the door:
+       *  measured 2026-09-04, one door, same minute — seat `ck-lib-js` reads
+       *  `core#Kernel → shaped false` over `urn:ckp:ck-lib-js/shapes/composed` (b62f4618…)
+       *  while seat `pgck`, with wave+lexicon adopted, reads materially different values.
+       *  Neither is wrong. So the key binds (kernel, surfaceDigest) and a reply without a
+       *  digest yields NO key — throwing beats silently keying on the door and serving one
+       *  seat's law to another. `surface.grounding` is the door-scoped question; these are not. */
+      key: (reply) => {
+        const d = reply?.surfaceDigest;
+        if (!d) throw new Error('surface.key: reply carries no surfaceDigest — a surface read is SEAT-scoped (CK-DOOR v1.6.4 R-29) and cannot be cached on the door alone');
+        return `${reply.kernel ?? this.name}|${d}`;
+      },
+      /** v1.6.4 (R21) — cache the refusal registry on `registryDigest`, NEVER on `count`.
+       *  Measured + sourced: at least one code (`dependent_objects`) is seeded in
+       *  pgck-baseline.sql and in NO migration, so a fresh CREATE EXTENSION and a door walked
+       *  up the ALTER EXTENSION chain end up with DIFFERENT registries — permanently, at the
+       *  SAME extversion. A door's refusal set is a property of its INSTALL HISTORY, not its
+       *  version, so never infer a code's existence from a version comparison: gate on presence
+       *  in the fetched set. The exact totals are deliberately NOT written here — baking one in
+       *  is the very defect this key exists to prevent (and the purge gate enforces it). */
+      refusalsKey: (reply) => {
+        const d = reply?.registryDigest;
+        if (!d) throw new Error('surface.refusalsKey: reply carries no registryDigest — the code COUNT is a coincidence, never a cache key (CK-DOOR v1.6.4 R-30)');
+        return d;
+      },
     };
+  }
+
+  /** v1.6.4 (R21.3) — door identity, with `build_id` beside `version`.
+   *  Two doors reporting `0.4.109` are distinguishable ONLY by build_id, and one such id
+   *  (`v0.4.108-1-g1e5ff13`) names a commit present in no branch — a third party cannot fetch
+   *  it. Surfacing it makes that visible instead of mysterious. Absent identity reads null
+   *  across the board: never inferred from the version, never invented. */
+  async doorIdentity() {
+    const r = await this.do('surface.check', {});
+    if (r && r.ok === false) throw refusalError('surface.check', r);
+    const e = r?.engineIdentity ?? {};
+    return { state: e.state ?? null, version: e.version ?? null, buildId: e.build_id ?? null,
+             extversion: e.extversion ?? null, agreement: e.agreement ?? null };
   }
 
   /** v1.6.3 (R11): the clock surface — three verbs, zero interpretation, one rendered limit.
@@ -399,11 +467,52 @@ export class ConceptKernel {
         return r;
       },
       /** signal.boundary — ONE hash-chained boundary head per boundary, never per event; the
-       *  raw presence trace stays organ-local (R-14). {ok:true, sealed:false, reason:
+       *  raw presence trace stays organ-local (R-14).
+       *
+       *  v1.6.4 (R23, PASS-14 §6) — THE PAYLOAD CONTRACT IS `{about, dwellMillis, events}`:
+       *  `about` is the concept IRI, `dwellMillis` the dwell, `events` the count. Measured
+       *  2026-09-04: `{concept, boundary, dwellMillis}` is refused `missing_param` / 22004 with
+       *  the hint naming the right keys. The semantics were documented upstream WITHOUT the
+       *  keys, so a client written from that prose hits the refusal on its first call — this
+       *  comment is cheaper than the round trip. **No local requiredness check is added**
+       *  (R23.2): the substrate's hint is better than anything this client would invent, and
+       *  inventing one would be a default carrying wire meaning. {ok:true, sealed:false, reason:
        *  'never_saw'} is a SUCCESS and returns normally: the absence of a Signal is correctly
        *  free, and sealing a zero would manufacture evidence of an encounter that did not
        *  happen. Never rendered as a failure, an error, or a retryable condition. */
       boundary: this._nsCall(OP_VERB.boundary),
+    };
+  }
+
+  /** v1.6.4 (R17, PASS-14 §2/§3): the adoption surface — the ONLY verification path for a
+   *  module's sealed `sourceDigest` against the bytes the loader actually consumed.
+   *
+   *  A fabricated digest still SEALS — deliberate, and correct: a report may be wrong cheaply,
+   *  a gate may not, and a byte gate in the composition hot path is the s68 deadlock class. It
+   *  is detectable ON DEMAND, and that is the whole contract. Same `_nsCall` as surface/clock,
+   *  so the refusal behaviour cannot drift. Memoized. */
+  get adoption() {
+    return this._adoptionNS ??= {
+      check: this._nsCall('adoption.check'),
+      /** R17.3 — the verify-then-load gate, as a STRUCTURAL verdict, not a boolean dressed as
+       *  authority. Reads flags the substrate sent; composes no new fact.
+       *    adopt by digest → sourceDigestMatch === true AND sourceLoads === 1
+       *                    → verify-proof over the code path → THEN load.
+       *  `sourceLoads > 1` disqualifies for CODE: a graph loaded twice can match its LAST load
+       *  and still not be what the first Adoption saw. */
+      loadable: (report = {}) => {
+        const { sourceDigestMatch = null, sourceLoads = null } = report ?? {};
+        const reasons = [];
+        // R17.2 — three values, three meanings. `null` is UNKNOWN, never "fine": sourceRecorded
+        // is populated by pgRDF's turtle funnel ONLY, so staged/bulk/n-quads loads record
+        // nothing. Until pgRDF#120 closes, anything loading CODE treats null exactly as false.
+        if (sourceDigestMatch === false) reasons.push('sourceDigestMatch is false — the sealed claim does not equal the bytes the parser consumed. A finding, always.');
+        if (sourceDigestMatch === null) reasons.push('sourceDigestMatch is null — one side absent, so this is UNKNOWN, never fine. sourceRecorded comes from pgRDF\'s turtle funnel only (staged/bulk/n-quads record nothing, pgRDF#120 open); for anything that loads CODE, treat null exactly like false.');
+        if (sourceLoads !== 1) reasons.push(`sourceLoads is ${JSON.stringify(sourceLoads)} — code requires exactly 1. A graph loaded more than once can match its LAST load and still not be what the first Adoption saw.`);
+        const verdict = (sourceDigestMatch === true && sourceLoads === 1) ? 'verified'
+          : (sourceDigestMatch === null && sourceLoads === 1) ? 'unknown' : 'refused';
+        return { verdict, sourceDigestMatch, sourceLoads, reasons };
+      },
     };
   }
 
@@ -423,6 +532,43 @@ export class ConceptKernel {
       reply = await this.do(verb, payload, dispatchOpts);
     }
     return reply;
+  }
+
+  /** v1.6.4 (R24.2) — the ownership PRE-FLIGHT. Reads the target row and refuses to ORIGINATE
+   *  a write against one this connection did not create.
+   *
+   *  ⚠ THIS IS A PATTERN GUARD, NOT A CONTROL (R24.5). Measured 2026-09-04 on a virgin
+   *  pgck.localhost with two distinct verified bearers: the write SUCCEEDS server-side and
+   *  REWRITES `createdBy` to the patcher. Nothing in this client closes that — the door
+   *  authorises it (CK-DOOR v1.6.4 §13.4, R-33, declared UNMET). One `k.do()` bypasses this
+   *  guard entirely, by design: it is here to make the exposure visible and to stop cklib
+   *  callers doing it by accident, never to claim the floor exists.
+   *
+   *  R24.2a — it fires ONLY when it knows. A refused/faulted/empty pre-flight read, or an
+   *  undeterminable own-sub, STANDS DOWN and lets the write proceed: the server's own answer
+   *  is more informative than a client guess, and substituting an instance.get refusal for an
+   *  instance.update one would be the failover the charter forbids. */
+  async _assertMayWrite(op, id, opts = {}) {
+    if (opts.crossOwner === true) return;                       // R24.3 — explicit, per-call
+    const sub = this._transport?.auth?.claims?.sub ?? this._transport?.auth?.userId ?? null;
+    if (!sub || id == null) return;                             // cannot know → stand down
+    let row = null;
+    try { row = await this.get(id); } catch { return; }         // refused/faulted → stand down
+    if (!row) return;
+    const CORE = 'https://conceptkernel.org/ontology/v3.11/core#createdBy';
+    const by = row[CORE] ?? row.createdBy ?? row.body?.[CORE] ?? null;
+    if (!by) return;                                            // unstamped → stand down
+    const mine = by === `urn:ckp:participant:${sub}` || String(by).endsWith(sub);
+    if (mine) return;
+    // R24.4 — a LOCAL refusal. It is not dressed as a wire verdict: refused:false, sqlstate:null,
+    // no `reply`, because no server refused this. The client declined to send.
+    const e = new Error(
+      `${op}: refusing to originate a write against a row created by ${by} — this connection is ` +
+      `urn:ckp:participant:${sub}. The door does NOT gate this (CK-DOOR v1.6.4 R-33, measured UNMET): ` +
+      `the write would SUCCEED and would rewrite createdBy to you, erasing the creator. ` +
+      `This is a client pattern guard, not a control. Pass { crossOwner: true } if deliberate.`);
+    e.refused = false; e.sqlstate = null; e.localGuard = 'R24';
+    throw e;
   }
 
   // ── Named conveniences (sugar over `do`, mapped via OP_VERB) ────────────────
@@ -445,7 +591,10 @@ export class ConceptKernel {
   }
   /** TE-6: generic declared-shape patch (pgCK T4, ≥0.4.11) — instance.update {id, patch:{…}} → update_typed,
    *  patched by the type's declared properties (re-sealed; undeclared keys rejected). */
-  async update(id, patch = {}) { return writeResult(await this.do(OP_VERB.update, { id, patch })); }
+  async update(id, patch = {}, opts = {}) {
+    await this._assertMayWrite('update', id, opts);             // R24.2 — before the write
+    return writeResult(await this.do(OP_VERB.update, { id, patch }));
+  }
   // TE-8 (live-verified vs pgCK 0.4.13): `target` is a PLAIN IRI — edge.create puts it straight into the
   // materialized turtle, so an {'@id':…} wrapper turtle-parse-errors. `predicate` must be a declared IRI.
   async link(source, predicate, target) { return writeResult(await this.do(OP_VERB.link, { source, predicate, target })); }
@@ -461,7 +610,10 @@ export class ConceptKernel {
   // To notify, CREATE a Finding — `k.create(<wave:Finding IRI>, {label, reason, findingState})`. There is
   // deliberately no `finding()` helper: it would have to hardcode a core IRI, and this client hardcodes
   // none (CL-D2). The caller supplies the IRI, as with every other type.
-  async retire(id, reason) { return writeResult(await this.do(OP_VERB.retire, { id, reason })); }
+  async retire(id, reason, opts = {}) {
+    await this._assertMayWrite('retire', id, opts);             // R24.2 — before the write
+    return writeResult(await this.do(OP_VERB.retire, { id, reason }));
+  }
   // U7 (v1.5.13, D1): same rule as writeResult — `verified` is the substrate's verdict verbatim,
   // absent means null. A proof digest attests hashing/chaining, never conformance; manufacturing
   // one from the other was the exact defect #16 removed one function over.
@@ -482,7 +634,8 @@ export class ConceptKernel {
   /** TE-7: native sealed-map transition (pgCK T3, ≥0.4.10). The kernel reads the instance type's OWN sealed
    *  transition map; an illegal move returns {error:'invalid_transition', from, to, allowed} — `allowed` is
    *  surfaced so the caller can offer only the legal to_states. No client-side ride-on-update. */
-  async transition(id, toState, evidence) {
+  async transition(id, toState, evidence, opts = {}) {
+    await this._assertMayWrite('transition', id, opts);         // R24.2 — before the write
     // Lossless: surface the sealed-map reply verbatim — {from, to, source} on success, plus `allowed`
     // WHEN the server sends it (optional — live pgCK 0.4.21 omitted it for a nonexistent target). No
     // dropping to raw do() just to read the from-state.
@@ -535,6 +688,15 @@ export class ConceptKernel {
     // queryWithVerdict(). Never dropped again.
     const verdict = r?.complete ?? r?.completeness ?? (r?.truncated != null ? (r.truncated ? 'truncated' : 'complete') : null);
     Object.defineProperty(rows, 'completeness', { value: verdict, enumerable: false, configurable: true });
+    // v1.6.4 (R19, PASS-14 §5): `shaped` names TWO different properties, and this is the
+    // misleading one. On `surface.typecheck` it means "some shape targets this type in the
+    // COMPOSED surface" — the judgement question. On `instance.query` it means only
+    // "declared property keys exist in the kernel graph", used to turn filter keys into a
+    // refusal set. A reader concluding "shaped:false ⇒ unshaped ⇒ seals are vacuous" from a
+    // QUERY reply is wrong wherever the composed surface does target the type. The client
+    // therefore surfaces it under a name that cannot be misread, and does NOT re-expose the
+    // word `shaped`. "Is this type judged?" is `k.surface.typecheck({type})` — never this.
+    Object.defineProperty(rows, 'filterKeysConstrained', { value: r?.shaped ?? null, enumerable: false, configurable: true });
     return rows;
   }
 

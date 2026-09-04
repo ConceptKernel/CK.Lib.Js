@@ -2,6 +2,72 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.6.4] — 2026-09-04
+
+**The measured release — PASS-14 driven back through the client with a second and third bearer,
+which found an ownership floor that four documents record as held and this instrument cannot
+find.** Built against `SPEC.CK-DOOR.v1.6.4` §13 (R-26…R-33) and pgCK's `to-CKLIBJS-PASS-14`.
+13 suites, **306 passed / 0 failed**, every change RED-first. Bench **re-virgined first**
+(`SPEC.VOLUME-RESET`, operator authorised) so nothing is an artefact of accumulated state.
+
+**Added**
+
+- **`k.adoption.check()`** — the verify-then-load verb, through the same `_nsCall` as
+  `surface.*`/`clock.*` so the refusal contract cannot drift. Plus **`k.adoption.loadable()`**:
+  a structural verdict (`verified`/`refused`/`unknown`), never a boolean. `verified` requires
+  `sourceDigestMatch === true` **and** `sourceLoads === 1`; `null` carries the pgRDF#120 limit —
+  for anything loading code, treat it exactly like `false`. (R17)
+- **`k.capabilities()`** → `{declared, routed, unsealed, gap}`. An empty `affordances[]` is **not**
+  "no capabilities": measured 0 sealed / **40 routed** on this bench. Never gate UI on
+  `declared.length`; render "declared: none yet · routed: 40". (R18)
+- **`k.surface.key()` / `k.surface.refusalsKey()` / `k.doorIdentity()`** — the only honest cache
+  keys, and `build_id` beside `version`. `surface.*` is **seat-scoped**, so the key binds
+  `(kernel, surfaceDigest)`; the refusal registry keys on `registryDigest`, never the count.
+  (R20, R21)
+- **`ownedBy`** joins the stamp pass-through on every write reply — the one stamp measured
+  **client-assertable**: a forged `urn:ckp:participant:00000000-…` sealed verbatim. (R24.1)
+- **The ownership pre-flight.** `update`/`retire`/`transition` read the row first and throw
+  locally rather than originate a write against a row this connection did not create, escapable
+  per-call with `{ crossOwner: true }`. **A pattern guard, not a control** — one `k.do()`
+  bypasses it, the throw carries `refused:false`/`sqlstate:null` because no server refused
+  anything, and its message says the write **would have succeeded**. (R24)
+
+**Changed**
+
+- `instance.query`'s `shaped` is surfaced as **`filterKeysConstrained`** and the word `shaped` is
+  no longer re-exposed — it means "are filter keys constrained here", not "is this type judged".
+  Measured live in one call: `typecheck.shaped=true` while `query.filterKeysConstrained=false`,
+  same type, same seat. "Is this type judged?" routes to `k.surface.typecheck()` only. (R19)
+- `k.clock.boundary` documents its payload contract `{about, dwellMillis, events}`, and
+  deliberately adds **no** local requiredness check — the substrate's hint beats an invented one.
+  (R23)
+
+**Pinned, not changed**
+
+- The dual `rows[]`/`result[]` query shape was **already correct** (`normalizeReply`/`flattenRow`
+  flatten `rows` and prefer `result`). Its tests passed on first run and are recorded as a
+  regression pin; **no implementation was written and none is claimed.** (R22)
+
+**Corrections owed upstream** (`SPEC.CK-LIB-JS.v1.6.4-to-PGCK-1`)
+
+- PASS-14 §5/§C-2's composed counts (48 NodeShapes, 13 unshaped, 11 `lexicon#`) are **seat**
+  facts written as **door** facts — `surface.*` answers about the acting kernel's composed
+  surface, and the verdict moved on this seat mid-session as its surface changed.
+- PASS-14 §3's unfacaded-verb list is missing seven routed verbs.
+
+**Security — filed, not fixed here** (`-to-PGCK-1` §4; CK-DOOR v1.6.4 R-33, declared **UNMET**)
+
+Three distinct verified bearers on one door. One bearer patched and retired another's sealed
+Kernel; the patch **rewrote `createdBy` to the patcher**; `ownedBy` was forgeable at create; and a
+non-owner relaxed an Organ's **`writeAuthority` from `governed-only` to `readwrite`** — a
+permission-shaped field inside the ordinary patch allowlist. The 42501 `ownership_not_patchable`
+gate was **never observed**. Horizontal privilege between verified peers; **no client closes it.**
+
+**Wire-confirmed 2026-09-04 on `pgck.localhost`** (engine 0.4.109, `engineIdentity agree`, law
+`2a7b14d8…`/31, registry `a6241916…`/65 on a fresh `CREATE EXTENSION`): gate 1 exit 0 · gate 2
+**PROVEN** (canary REFUSED) · `release-confirm-1.6.4` **17 rungs / 0 failed / 1 honestly skipped**
+(no adoptions on this seat, so `loadable()` verdicts stay synthesised and are not claimed).
+
 ## [1.6.3] — 2026-09-02
 
 **The floor release — pgCK settled 24 obligations (v0.4.94→0.4.109, one day, ledger armed as a
