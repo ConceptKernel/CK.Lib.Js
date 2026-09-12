@@ -141,9 +141,11 @@ verification belongs in the consumer's build gate, offline, against the attested
 
 | path | tier | note |
 |---|---|---|
-| `tests/smoke-*.mjs` | 0 | 14 suites, 361 assertions, fake dispatchers — declared, never a real door |
+| `tests/smoke-*.mjs` | 0 | 15 suites, 372 assertions, fake dispatchers — declared, never a real door. **A fake that encodes the behaviour a door *should* have hides the defect that it does not** — R-40 passed here and failed on the wire |
 | `tests/wire/door-confirm.mjs` | 1 | law identity · read-only |
 | `tests/wire/door-suite.mjs` | 2 | grants + reply axis · read-only |
 | `tests/wire/door-beat.mjs` | 3 | the ladder · **destructive**, `CK_BEAT=1` guarded |
+| `tests/wire/foundation-1.6.5.mjs` | 3 | the FOUNDATION rows from the seat (own kernels, obligations, clock, stamps) · **destructive**, `CK_BEAT=1` guarded, idempotent |
+| `tests/wire/release-confirm-<ver>.mjs` | 1–3 | per-release confirmation through the released surface; reads by default, `CK_BEAT=1` for the seal rungs |
 | `tests/real-path/` | 4 | browser harness, full form coverage |
 | `tests/wire/_*.mjs` | — | **not gates.** Single-question probes kept for reproduction; the `_` prefix marks "not part of any suite, never run by CI" |

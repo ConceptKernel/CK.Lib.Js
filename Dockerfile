@@ -23,7 +23,7 @@ COPY LICENSE /
 
 LABEL org.opencontainers.image.title="CK.Lib.Js"
 LABEL org.opencontainers.image.description="Concept Kernel JS client — one governed dispatch through one door, verified identity, vendored and air-gapped (v3.11-and-forward)"
-LABEL org.opencontainers.image.version="1.6.5"
+LABEL org.opencontainers.image.version="1.6.6"
 LABEL org.opencontainers.image.source="https://github.com/ConceptKernel/CK.Lib.Js"
 LABEL org.opencontainers.image.licenses="MIT"
 LABEL org.opencontainers.image.designation="ckp:static"

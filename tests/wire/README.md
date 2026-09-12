@@ -5,12 +5,19 @@ file is the kit's own reference only.
 
 ```sh
 export NODE_EXTRA_CA_CERTS="$(mkcert -CAROOT)/rootCA.pem"
-export CK_DOOR=wss://<host>/wss CK_KERNEL=<rostered-kernel> CK_TOKEN=<your bot bearer>
+export CK_DOOR=wss://<host>/wss CK_KERNEL=<rostered-kernel> CK_TOKEN=<a FRESH bot bearer>
 
 node door-confirm.mjs                 # gate 1 · LAW      · read-only · safe on production
 node door-suite.mjs [--json]          # gate 2 · GRANTS   · read-only · safe on production
 CK_BEAT=1 node door-beat.mjs          # gate 3 · BURN     · DESTRUCTIVE · breakable benches only
 ```
+
+**Mint the bearer; do not reuse a saved one.** A bot credential's access token is short-lived
+even when the credential file around it is not, and **a stale bearer fails at CONNECT with
+`Authorization Violation`** — which looks exactly like a door fault and is not one. Measured
+2026-09-12: a 15-day-old cached token killed gates 1 and 2 against a door that was, in the same
+minute, serving this seat's other connection. Mint fresh from your IdP's token endpoint using the
+client-credentials grant and export the `access_token`.
 
 **Exit: 0 GREEN · 44 RED-measured · anything else BROKEN.**
 
@@ -20,7 +27,7 @@ CK_BEAT=1 node door-beat.mjs          # gate 3 · BURN     · DESTRUCTIVE · bre
 |---|---|---|---|
 | `CK_DOOR` | all | **yes** | `wss://<host>/wss`. No default — a door is a wire-meaning value |
 | `CK_KERNEL` | all | **yes** | must be in **this door's** roster, or dispatches are silent |
-| `CK_TOKEN` | all | **yes in practice** | every CK door requires a verified bearer |
+| `CK_TOKEN` | all | **yes in practice** | every CK door requires a verified bearer. **Mint it fresh** — an expired one is refused at CONNECT (`Authorization Violation`) and reads as a broken door |
 | `CK_STRUCT_SHA` | 1 | no | **no default.** Unpinned ⇒ reports; pinned ⇒ confirms. Per deployment, never per fleet |
 | `CK_SHAPES` | 1 | no | informational unless pinned; deployment-dependent (root + adoptions) |
 | `CK_WAIT_MS` | 2 | no | reply deadline, default 4000 |

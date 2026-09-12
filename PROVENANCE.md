@@ -75,10 +75,22 @@ A successful verify means:
 
 ## Cutting a release (the only allowed flow)
 
-1. Bump versions in:
+1. Bump versions in **all four carriers**. Through v1.6.5 this list named only two of them:
    - `package.json::version`
+   - **`ck.js::VERSION`** — the `export const VERSION` at the top of the file. **This is the one
+     consumers gate on:** a wrapping client pulls `/cklib/` from the door, reads `mod.VERSION` and
+     enforces its operating floor against it (measured against a live consumer, 2026-09-12).
+   - **`ck-client.js::VERSION`** — the transport self-identifies, because the door serves
+     `ck-client.js` separately and a consumer may hold it without `ck.js`.
    - `Dockerfile::LABEL org.opencontainers.image.version` (and the comment header)
    - `CHANGELOG.md` — add a new top entry
+
+   **Three of the four are gate-enforced; one is not.** `tests/smoke-ck-client.mjs` pins
+   `package.json ≡ ck.js ≡ ck-client.js` and fails the release immediately if they disagree —
+   measured 2026-09-12, when a v1.6.6 bump that moved three of them was caught by this gate with
+   two red assertions. **The `Dockerfile` label is the carrier nothing checks**, and it is the one
+   that actually rotted: it read `1.5.10` through four releases before v1.6.5 corrected it. Treat
+   the label as the step the test cannot do for you.
 2. Commit the bumps with a `release: v<new>` message.
 3. Tag: `git tag v<new>` (bare semver only — no project prefix, no decorations; see `memory/feedback_release_name_clean.md`).
 4. Push the tag: `git push origin v<new>`.

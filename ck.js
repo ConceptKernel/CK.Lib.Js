@@ -19,7 +19,7 @@ import CKStore from './ck-store.js';
 // unverifiable — including ck_doctor's, which reported "1.5.10" on the same line as the v1.5.11 digest
 // it had just computed. A label that lives beside the bytes drifts from them; one that lives IN the
 // bytes cannot. Pinned to package.json by tests/smoke-ck-client.mjs, so the two can never disagree.
-export const VERSION = '1.6.5';
+export const VERSION = '1.6.6';
 const CORE_NS = 'https://conceptkernel.org/ontology/v3.11/core#';   // v3.12 root keeps the v3.11 core ns (measured in core.ttl)
 
 /** Normalize a kernel name or URN to the canonical `ckp://Kernel#<Name>` form. */
@@ -400,6 +400,48 @@ export class ConceptKernel {
       declared: this._nsCall('surface.declared'),
       unshaped: this._nsCall('surface.unshaped'),
       grounding: this._nsCall('surface.grounding'),
+      /** v1.6.5 (FOUNDATION O1): "same" upgraded to a LABELLED verdict, never a boolean. Two graphs,
+       *  two digest planes, read off the door in the same call: unequal STRUCTURAL digests PROVE two
+       *  graphs differ; equal ones are strong evidence of isomorphism and NOT proof (first-degree
+       *  blank-node signatures, not RDFC-1.0 — the door's own `verdictAsymmetry` text, carried
+       *  verbatim). `copyDigest` equality adds "byte-identical in THIS store" — moves on reload, never
+       *  cross-bench identity. The client composes no digest and upgrades no verdict: it names the
+       *  method beside every number ("a digest without its method is not a pin"). RDFC on the wire is
+       *  the substrate's to expose (ask carried in SPEC.CK-FOUNDATION.v1.6.5 §3 O1). */
+      same: async (iriA, iriB) => {
+        if (!iriA || !iriB) throw new Error('surface.same: two graph IRIs are required and have no default');
+        const ga = await this.surface.grounding({ iri: iriA });
+        const gb = await this.surface.grounding({ iri: iriB });
+        const row = (g, iri) => (Array.isArray(g?.graphs) ? g.graphs : []).find((x) => x && x.iri === iri) ?? null;
+        const A = row(ga, iriA), B = row(gb, iriB);
+        if (!A || !B) throw new Error(`surface.same: grounding answered no row for ${!A ? iriA : iriB} — nothing to compare`);
+        // v1.6.6 (CK-DOOR R-40 — MEASURED ON THE WIRE 2026-09-12, not inferred): a door at ≤0.4.112
+        // MINTS a graph row on a READ — `ckp.surface_grounding` calls `pgrdf.add_graph` (get-or-create)
+        // on a caller-supplied IRI — so an ABSENT graph comes back as a real row holding nothing, and
+        // `asserted: 0` is ambiguous between "genuinely empty" and "did not exist until you asked".
+        // The two are indistinguishable from here. Refusing is the only honest move: a DIFFERENT
+        // verdict carrying `proof:true` about a graph THIS CALL created is a proof-shaped lie, and the
+        // sha256 of nothing is a value while absence is not. Zeros are absence, never presence.
+        for (const [row, iri] of [[A, iriA], [B, iriB]]) {
+          if (row.asserted === 0 || row.asserted == null) throw new Error(
+            `surface.same: ${iri} answers asserted:${row.asserted} — REFUSING to return a verdict (CK-DOOR R-40). ` +
+            `At pgCK ≤0.4.112 surface.grounding mints a graph row on read, so a zero-assertion row cannot be ` +
+            `distinguished from a graph that did not exist until this call — and this call may have created it. ` +
+            `Establish the graph exists by another route before comparing.`);
+        }
+        const structuralEqual = A.structuralDigest != null && A.structuralDigest === B.structuralDigest;
+        const copyEqual = A.copyDigest != null && A.copyDigest === B.copyDigest;
+        const verdict = structuralEqual ? 'ISOMORPHIC_LIKELY' : 'DIFFERENT';
+        return {
+          verdict, proof: verdict === 'DIFFERENT',        // only DIFFERENT is proof
+          structuralEqual, copyEqual,
+          method: { structuralDigest: 'first-degree blank-node signatures (the fleet algorithm) — survives reload; equal is evidence, unequal is proof',
+                    copyDigest: "this store's bytes — moves on every reload; in-store drift only, never cross-bench identity" },
+          a: { iri: iriA, structuralDigest: A.structuralDigest ?? null, copyDigest: A.copyDigest ?? null, asserted: A.asserted ?? null, nodeshapes: A.nodeshapes ?? null },
+          b: { iri: iriB, structuralDigest: B.structuralDigest ?? null, copyDigest: B.copyDigest ?? null, asserted: B.asserted ?? null, nodeshapes: B.nodeshapes ?? null },
+          verdictAsymmetry: ga?.verdictAsymmetry ?? null,
+        };
+      },
       /** v1.6.4 (R20) — the ONLY honest cache key for a surface-derived read.
        *  `surface.*` answers about the COMPOSED SURFACE OF THE ACTING KERNEL, not the door:
        *  measured 2026-09-04, one door, same minute — seat `ck-lib-js` reads
@@ -488,6 +530,19 @@ export class ConceptKernel {
           const e = new Error('score.tick: door reported epochUnchanged:false — the tick may DRAFT only (CK-DOOR v1.6.3 R-20); a tick that advances the epoch is a door violation, not a result');
           e.reply = r;
           throw e;
+        }
+        // v1.6.5 (FOUNDATION O5 / T1): the score's KIND, read structurally off the reply's own `law`
+        // — never computed, never a threshold. Measured 2026-09-05 on ck-lib-js-alpha: the law names
+        // weightAssent/weightDissent/weightImplicit/tauImplicitMillis/thresholdPromote and NO decay
+        // constant, and the score grew 0.0729 → 0.1901 monotonically with each boundary — Hawkes at
+        // λ=0, an undecayed sum. FOUNDATION T1 is open and PASS-2 records the containment: R-20 (nothing
+        // ACTS on a score). The label carries the quarantine so a consumer never renders a bare number
+        // as a bounded one. A decay key in `law`, when λ becomes law, flips this to 'decayed'.
+        if (r && r.law && typeof r.law === 'object') {
+          const decayed = Object.keys(r.law).some((k) => /lambda|decay|halfLife/i.test(k));
+          r.scoreKind = decayed ? 'decayed' : 'undecayed-sum';
+          r.scoreNote = decayed ? 'the law carries a decay constant — bounded by it (Hawkes η<1)'
+            : 'the law carries NO decay constant: this score is an undecayed sum that only grows (FOUNDATION T1 open). Contained by R-20 — nothing acts on it; render it as a counter under quarantine, never as a bounded score.';
         }
         return r;
       },

@@ -2,6 +2,76 @@
 
 All notable changes to CK.Lib.Js are documented here.
 
+## [1.6.6] — 2026-09-12
+
+**The alignment release — two documents that were never written, and a header that described the
+wrong version.** Built against `SPEC.CK-DOOR.v1.6.6` and pgCK's `to-CKLIBJS-PASS-17` (fourteen
+answers to two unanswered letters) and `to-PGCK-MCP-4` (the uptake note measuring that a client
+embedding this library exposes none of its facades). 15 suites, **372 passed / 0 failed**, every
+change RED-first.
+
+**Wire-confirmed 2026-09-12 on `pgck.localhost`** (extversion **0.4.112**, `engineIdentity` agree,
+law structural `2a7b14d81aab3037…` / 31 NodeShapes, registry `a6241916879c67e9…` / 65 codes). The
+bench had been rebuilt on 2026-09-10 and taken the seat with it, so the kernel was **re-germinated
+first** — `urn:ckp:project:ck-lib-js` (`projectKind "shared"`) and `urn:ckp:ck-lib-js/kernel`,
+`kernel_graph` 0 → 30 quads, `state` named → germinated. Gate 1 **exit 0**; gate 2 **PROVEN** with
+the `>` canary **REFUSED** (so the GRANTED rows mean something); `release-confirm-1.6.6` **9 / 0**.
+Gate 2 asserts the door serves the exact tree under test, so those results speak for v1.6.6.
+
+**The release confirmation went RED first, and that is the point.** Its negative control — *an
+absent graph must never yield a verdict* — **failed**, because the door **minted the graph during
+that very read** and answered a row for it, leaving the client one step from returning `DIFFERENT`
+with `proof: true` about a graph that did not exist until the assertion ran. That is CK-DOOR
+**R-40**, which until today was `[source]` (pgCK reading their own SQL) and is now **reproduced on
+the wire from the client side**. The offline suite could never have caught it: this kit's fake
+dispatcher returns no row for an unknown IRI — the *correct* behaviour — so the fake was more
+honest than the substrate. Fixed client-side below; the door defect is filed and is pgCK's.
+
+**Added**
+
+- **`k.surface.same(iriA, iriB)`** — graph comparison as a **labelled two-plane verdict, never a
+  boolean**. Two `surface.grounding` reads, two digest planes: unequal *structural* digests
+  **prove** two graphs differ (`verdict:'DIFFERENT'`, `proof:true`); equal ones are strong
+  evidence of isomorphism and **not** proof (`'ISOMORPHIC_LIKELY'`, `proof:false`) — first-degree
+  blank-node signatures, not RDFC-1.0. `copyDigest` equality adds "byte-identical in this store"
+  and moves on reload, so it is never cross-bench identity. The method is named beside every
+  number and the door's own `verdictAsymmetry` text rides verbatim. A graph the door answers no
+  row for **throws** — nothing to compare is not a verdict. The client composes no digest and
+  upgrades no verdict.
+- **`k.clock.tick().scoreKind`** — the score's *kind*, read **structurally off the reply's own
+  `law`**, never computed and never a threshold: `'decayed'` only when the law names a decay
+  constant, `'undecayed-sum'` otherwise, with a note carrying the containment (nothing acts on a
+  score). A consumer renders an undecayed sum as a counter under quarantine, never as a bounded
+  score.
+
+**Documented — the release is mostly this**
+
+- **`SPEC.CK-OPERATIONS.v1.6.6` §5, the wrapping contract.** For the consumer §§1–4 never
+  addressed: a program that embeds a kernel handle and re-exposes it to someone else. Names every
+  facade, **what each receipt carries that a raw dispatch does not**, and the rule that a wrapper
+  exposing only the raw verb has re-exposed the wire while withholding every rung this library
+  exists to add. States capability probing client-side — **probe the object, never a version
+  string** — and warns that `k.capabilities()` reports the *door's* affordances and is not a
+  facade probe.
+- **`SPEC.CK-DOOR.v1.6.6`**, a forward index rather than a copy, because copying is how the
+  previous one broke: **v1.6.5's header was byte-identical to v1.6.4's**, naming the wrong client
+  version, the wrong supersedes chain and a substrate floor two patch levels below the one its
+  own new section was measured at. Also marks **R-29.1 UNMET** (a requirement this project had
+  asserted as met — measured absent across five calls on two seats), adds **R-40** (a read must
+  not mint substrate state), records the decided cure for R-39, and refines the germination row:
+  germination is existence *for a name the door can already admit*.
+
+**Fixed**
+
+- **`PROVENANCE.md`'s release checklist named two of four version carriers.** It omitted
+  `ck.js::VERSION` — the one a wrapping client gates on, reading `mod.VERSION` off the served
+  bundle to enforce its operating floor — and `ck-client.js::VERSION`, which self-identifies
+  because the door serves the transport separately. The checklist now names all four, and records
+  which are enforced: `tests/smoke-ck-client.mjs` pins `package.json ≡ ck.js ≡ ck-client.js` and
+  caught this release's own bump mid-flight when it moved three of them. The `Dockerfile` label
+  is the carrier no test checks, and the one that measurably rotted — `1.5.10` through four
+  releases.
+
 ## [1.6.5] — 2026-09-04
 
 **The ladder release — the client becomes the rung where a wrong digest never leaves the seat.**
